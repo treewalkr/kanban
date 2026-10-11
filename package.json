@@ -1,0 +1,33 @@
+{
+  "name": "kanban",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "kanban": "./src/cli.ts"
+  },
+  "scripts": {
+    "dev:api": "bun run --watch src/index.ts",
+    "dev:web": "vite --root web --port 5174",
+    "dev": "concurrently -n api,web -c blue,green 'bun run dev:api' 'bun run dev:web'",
+    "build": "vite build --root web --outDir dist --emptyOutDir",
+    "start": "bun run src/index.ts",
+    "test": "bun test",
+    "check": "svelte-check --workspace web && tsc --noEmit -p tsconfig.src.json"
+  },
+  "dependencies": {
+    "@elysiajs/cors": "^1.4.2",
+    "@elysiajs/static": "^1.4.10",
+    "elysia": "^1.4.30"
+  },
+  "devDependencies": {
+    "@elysiajs/eden": "^1.4.9",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@types/bun": "^1.4.3",
+    "concurrently": "^10.0.6",
+    "svelte": "^5.57.2",
+    "svelte-check": "^4.7.7",
+    "typescript": "~5.9.0",
+    "vite": "^8.3.4"
+  }
+}
