@@ -1,0 +1,372 @@
+import { Database } from "bun:sqlite";
+import { mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { newId, slugify } from "./ids";
+
+export interface Lane {
+  id: string;
+  name: string;
+  description: string;
+  position: number;
+  fixed: number;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  note: string;
+  laneId: string;
+  project: string;
+  position: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Board {
+  lanes: Lane[];
+  tasks: Task[];
+}
+
+export interface TaskPatch {
+  title?: string;
+  note?: string;
+  project?: string;
+  lane?: string; // lane ref: id, id prefix, name prefix, or 1-based ordinal
+  index?: number; // 0-based position within the target lane; omit to append
+}
+
+export interface LanePatch {
+  name?: string;
+  description?: string;
+  index?: number; // 0-based position among lanes
+}
+
+export type KanbanErrorCode = "not-found" | "conflict" | "invalid";
+
+export class KanbanError extends Error {
+  constructor(
+    message: string,
+    public code: KanbanErrorCode = "invalid",
+  ) {
+    super(message);
+  }
+}
+
+const GAP = 100;
+const MIN_GAP = 0.01;
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS lanes (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  position REAL NOT NULL,
+  fixed INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS tasks (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  lane_id TEXT NOT NULL REFERENCES lanes (id),
+  project TEXT NOT NULL DEFAULT '',
+  position REAL NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS tasks_lane_order ON tasks (lane_id, position);
+`;
+
+export const DEFAULT_LANES: Array<Omit<Lane, "position">> = [
+  { id: "backlog", name: "Backlog", description: "Waiting work, nothing started", fixed: 1 },
+  { id: "plan", name: "Plan", description: "Scoping and design before code", fixed: 0 },
+  { id: "implement", name: "Test + Implement", description: "Build it, test as you go", fixed: 0 },
+  { id: "review", name: "Review", description: "Verify, polish, get sign-off", fixed: 0 },
+  { id: "done", name: "Done", description: "Finished", fixed: 1 },
+];
+
+export function defaultDbPath(): string {
+  return process.env.KANBAN_DB ?? join(import.meta.dir, "..", "data", "kanban.db");
+}
+
+interface LaneRow {
+  id: string;
+  name: string;
+  description: string;
+  position: number;
+  fixed: number;
+}
+
+interface TaskRow {
+  id: string;
+  title: string;
+  note: string;
+  lane_id: string;
+  project: string;
+  position: number;
+  created_at: number;
+  updated_at: number;
+}
+
+const rowToLane = (r: LaneRow): Lane => ({ ...r });
+const rowToTask = (r: TaskRow): Task => ({
+  id: r.id,
+  title: r.title,
+  note: r.note,
+  laneId: r.lane_id,
+  project: r.project,
+  position: r.position,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+});
+
+export class KanbanDb {
+  private db: Database;
+  private stmts = new Map<string, ReturnType<Database["prepare"]>>();
+
+  constructor(path: string = defaultDbPath()) {
+    mkdirSync(dirname(path), { recursive: true });
+    this.db = new Database(path);
+    this.db.exec("PRAGMA journal_mode = WAL;");
+    this.db.exec(SCHEMA);
+    this.seedLanes();
+  }
+
+  close(): void {
+    this.db.close();
+  }
+
+  private q(sql: string): ReturnType<Database["prepare"]> {
+    let s = this.stmts.get(sql);
+    if (!s) {
+      s = this.db.prepare(sql);
+      this.stmts.set(sql, s);
+    }
+    return s;
+  }
+
+  private seedLanes(): void {
+    const count = this.q("SELECT COUNT(*) AS n FROM lanes").get() as { n: number };
+    if (count.n > 0) return;
+    const insert = this.q("INSERT INTO lanes (id, name, description, position, fixed) VALUES (?, ?, ?, ?, ?)");
+    DEFAULT_LANES.forEach((lane, i) => insert.run(lane.id, lane.name, lane.description, (i + 1) * GAP, lane.fixed));
+  }
+
+  // ---------- reads ----------
+
+  lanes(): Lane[] {
+    return (this.q("SELECT * FROM lanes ORDER BY position, id").all() as LaneRow[]).map(rowToLane);
+  }
+
+  tasks(): Task[] {
+    return (this.q("SELECT * FROM tasks ORDER BY created_at, id").all() as TaskRow[]).map(rowToTask);
+  }
+
+  board(): Board {
+    const laneOrder = new Map(this.lanes().map((l, i) => [l.id, i]));
+    const tasks = this.tasks().sort(
+      (a, b) => (laneOrder.get(a.laneId) ?? 0) - (laneOrder.get(b.laneId) ?? 0) || a.position - b.position,
+    );
+    return { lanes: this.lanes(), tasks };
+  }
+
+  laneTasks(laneId: string): Task[] {
+    return (
+      this.q("SELECT * FROM tasks WHERE lane_id = ? ORDER BY position, created_at").all(laneId) as TaskRow[]
+    ).map(rowToTask);
+  }
+
+  taskCount(laneId: string): number {
+    const row = this.q("SELECT COUNT(*) AS n FROM tasks WHERE lane_id = ?").get(laneId) as { n: number };
+    return row.n;
+  }
+
+  // ---------- resolution ----------
+
+  resolveLane(ref: string): Lane {
+    const lanes = this.lanes();
+    const exact = lanes.find((l) => l.id === ref || l.name.toLowerCase() === ref.toLowerCase());
+    if (exact) return exact;
+    const byId = lanes.filter((l) => l.id.startsWith(ref.toLowerCase()));
+    if (byId.length === 1) return byId[0];
+    if (byId.length > 1) {
+      throw new KanbanError(`ambiguous lane '${ref}': ${byId.map((l) => l.id).join(", ")}`, "conflict");
+    }
+    const byName = lanes.filter((l) => l.name.toLowerCase().startsWith(ref.toLowerCase()));
+    if (byName.length === 1) return byName[0];
+    if (byName.length > 1) {
+      throw new KanbanError(`ambiguous lane '${ref}': ${byName.map((l) => l.name).join(", ")}`, "conflict");
+    }
+    if (/^\d+$/.test(ref)) {
+      const n = Number(ref);
+      if (n >= 1 && n <= lanes.length) return lanes[n - 1];
+    }
+    throw new KanbanError(`no lane matching '${ref}'`, "not-found");
+  }
+
+  resolveTask(prefix: string): Task {
+    const tasks = this.tasks();
+    const exact = tasks.find((t) => t.id === prefix);
+    if (exact) return exact;
+    const matches = tasks.filter((t) => t.id.startsWith(prefix));
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) {
+      throw new KanbanError(`ambiguous task id '${prefix}': ${matches.map((t) => t.id).join(", ")}`, "conflict");
+    }
+    throw new KanbanError(`no task matching '${prefix}'`, "not-found");
+  }
+
+  // ---------- task writes ----------
+
+  createTask(input: { title: string; note?: string; lane?: string; project?: string; index?: number }): Task {
+    const title = input.title.trim();
+    if (!title) throw new KanbanError("title must not be empty", "invalid");
+    const lane = input.lane ? this.resolveLane(input.lane) : this.lanes()[0];
+    if (!lane) throw new KanbanError("board has no lanes", "invalid");
+    const now = Date.now();
+    const position = this.insertPosition(lane.id, input.index, null);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const id = newId();
+      try {
+        this.q(
+          "INSERT INTO tasks (id, title, note, lane_id, project, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ).run(id, title, input.note ?? "", lane.id, input.project ?? "", position, now, now);
+        this.renormalizeIfTight(lane.id);
+        return this.resolveTask(id);
+      } catch (err) {
+        if (!(err instanceof Error && err.message.includes("UNIQUE"))) throw err;
+      }
+    }
+    throw new KanbanError("could not generate a unique id", "conflict");
+  }
+
+  updateTask(prefix: string, patch: TaskPatch): Task {
+    const task = this.resolveTask(prefix);
+    const laneId = patch.lane ? this.resolveLane(patch.lane).id : task.laneId;
+    const hasIndex = patch.index !== undefined;
+    const position = patch.lane || hasIndex ? this.insertPosition(laneId, patch.index, task.id) : task.position;
+
+    const title = patch.title?.trim();
+    if (patch.title !== undefined && !title) throw new KanbanError("title must not be empty", "invalid");
+
+    this.q(
+      `UPDATE tasks SET
+        title = ?, note = ?, lane_id = ?, project = ?, position = ?, updated_at = ?
+      WHERE id = ?`,
+    ).run(
+      title ?? task.title,
+      patch.note ?? task.note,
+      laneId,
+      patch.project ?? task.project,
+      position,
+      Date.now(),
+      task.id,
+    );
+    this.renormalizeIfTight(laneId);
+    return this.resolveTask(task.id);
+  }
+
+  moveTask(prefix: string, laneRef: string, index?: number): Task {
+    return this.updateTask(prefix, { lane: laneRef, index });
+  }
+
+  deleteTask(prefix: string): Task {
+    const task = this.resolveTask(prefix);
+    this.q("DELETE FROM tasks WHERE id = ?").run(task.id);
+    return task;
+  }
+
+  // ---------- lane writes ----------
+
+  createLane(input: { name: string; description?: string; index?: number }): Lane {
+    const name = input.name.trim();
+    if (!name) throw new KanbanError("lane name must not be empty", "invalid");
+    let id = slugify(name);
+    const existing = new Set(this.lanes().map((l) => l.id));
+    for (let n = 2; existing.has(id); n++) id = `${slugify(name)}-${n}`;
+    const lanes = this.lanes();
+    let position: number;
+    if (input.index === undefined || input.index >= lanes.length) {
+      position = (lanes.at(-1)?.position ?? 0) + GAP;
+    } else {
+      const clamped = Math.max(0, Math.floor(input.index));
+      const before = lanes[clamped];
+      position = clamped === 0 ? before.position / 2 : (lanes[clamped - 1].position + before.position) / 2;
+    }
+    this.q("INSERT INTO lanes (id, name, description, position, fixed) VALUES (?, ?, ?, ?, 0)").run(
+      id,
+      name,
+      input.description ?? "",
+      position,
+    );
+    return this.lanes().find((l) => l.id === id)!;
+  }
+
+  updateLane(prefix: string, patch: LanePatch): Lane {
+    const lane = this.resolveLane(prefix);
+    const name = patch.name?.trim();
+    if (patch.name !== undefined && !name) throw new KanbanError("lane name must not be empty", "invalid");
+    if (patch.index === undefined) {
+      this.q("UPDATE lanes SET name = ?, description = ? WHERE id = ?").run(
+        name ?? lane.name,
+        patch.description ?? lane.description,
+        lane.id,
+      );
+    } else {
+      const lanes = this.lanes().filter((l) => l.id !== lane.id);
+      const clamped = Math.max(0, Math.min(Math.floor(patch.index), lanes.length));
+      const position =
+        clamped === 0
+          ? (lanes[0]?.position ?? 0) / 2
+          : clamped >= lanes.length
+            ? (lanes.at(-1)?.position ?? 0) + GAP
+            : (lanes[clamped - 1].position + lanes[clamped].position) / 2;
+      this.q("UPDATE lanes SET name = ?, description = ?, position = ? WHERE id = ?").run(
+        name ?? lane.name,
+        patch.description ?? lane.description,
+        position,
+        lane.id,
+      );
+    }
+    return this.resolveLane(lane.id);
+  }
+
+  deleteLane(prefix: string, force = false): Lane {
+    const lane = this.resolveLane(prefix);
+    if (lane.fixed) throw new KanbanError(`lane '${lane.id}' is fixed and cannot be deleted`, "conflict");
+    const count = this.taskCount(lane.id);
+    if (count > 0) {
+      if (!force) throw new KanbanError(`lane '${lane.id}' still holds ${count} task(s); pass force to delete them too`, "conflict");
+      this.q("DELETE FROM tasks WHERE lane_id = ?").run(lane.id);
+    }
+    this.q("DELETE FROM lanes WHERE id = ?").run(lane.id);
+    return lane;
+  }
+
+  // ---------- ordering ----------
+
+  /** Fractional position for inserting at `index` within a lane (append if undefined). */
+  private insertPosition(laneId: string, index: number | undefined, excludeTaskId: string | null): number {
+    const tasks = this.laneTasks(laneId).filter((t) => t.id !== excludeTaskId);
+    if (tasks.length === 0 || index === undefined || index >= tasks.length) {
+      return (tasks.at(-1)?.position ?? 0) + GAP;
+    }
+    const clamped = Math.max(0, Math.floor(index));
+    if (clamped === 0) return tasks[0].position / 2;
+    return (tasks[clamped - 1].position + tasks[clamped].position) / 2;
+  }
+
+  /** Rewrite a lane's positions as 100/200/... when midpoint halving gets too tight. */
+  private renormalizeIfTight(laneId: string): void {
+    const tasks = this.laneTasks(laneId);
+    let tight = false;
+    for (let i = 1; i < tasks.length; i++) {
+      if (tasks[i].position - tasks[i - 1].position < MIN_GAP) {
+        tight = true;
+        break;
+      }
+    }
+    if (!tight) return;
+    const update = this.q("UPDATE tasks SET position = ? WHERE id = ?");
+    tasks.forEach((t, i) => update.run((i + 1) * GAP, t.id));
+  }
+}
