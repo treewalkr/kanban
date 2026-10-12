@@ -1,0 +1,45 @@
+<script lang="ts">
+  import type { Lane } from "../../../src/db";
+  import { board } from "./board.svelte";
+
+  let { lane, onclose }: { lane: Lane; onclose: () => void } = $props();
+
+  let value = $state("");
+  let el: HTMLTextAreaElement;
+
+  function autofocus(node: HTMLElement) {
+    node.focus();
+  }
+
+  async function submit() {
+    const title = value.trim();
+    if (!title) return onclose();
+    await board.addTask(lane.id, title);
+    value = "";
+    el.focus();
+  }
+
+  function key(e: KeyboardEvent) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submit();
+    }
+    if (e.key === "Escape") onclose();
+  }
+</script>
+
+<div class="composer">
+  <textarea
+    bind:value
+    bind:this={el}
+    use:autofocus
+    rows="2"
+    placeholder="card title… (Enter to add, Shift+Enter for newline)"
+    onkeydown={key}
+  ></textarea>
+  <div class="composer-actions">
+    {#if board.projectFilter}<span class="hint">project: {board.projectFilter}</span>{/if}
+    <span class="spacer"></span>
+    <button class="ghost" onclick={onclose}>close</button>
+  </div>
+</div>

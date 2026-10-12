@@ -8,9 +8,9 @@
   },
   "scripts": {
     "dev:api": "bun run --watch src/index.ts",
-    "dev:web": "vite --root web --port 5174",
+    "dev:web": "vite",
     "dev": "concurrently -n api,web -c blue,green 'bun run dev:api' 'bun run dev:web'",
-    "build": "vite build --root web --outDir dist --emptyOutDir",
+    "build": "vite build",
     "start": "bun run src/index.ts",
     "test": "bun test",
     "check": "svelte-check --workspace web && tsc --noEmit -p tsconfig.src.json"
