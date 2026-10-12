@@ -4,22 +4,30 @@ import { KanbanDb, KanbanError, defaultDbPath, type Board, type Lane, type Task 
 
 const errorStatus = { "not-found": 404, conflict: 409, invalid: 400 } as const;
 
+/**
+ * Map KanbanError to a typed `status()` response (treaty moves it to `error.value`);
+ * anything else is a real bug and rethrows.
+ */
+function fail(e: unknown, status: (code: number, value: unknown) => unknown): unknown {
+  if (e instanceof KanbanError) {
+    return status(errorStatus[e.code], { error: e.message, code: e.code });
+  }
+  throw e;
+}
+
 export const createApp = (db: KanbanDb) =>
   new Elysia()
     .use(cors({ origin: /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/ }))
-    .onError(({ error, set }) => {
-      if (error instanceof KanbanError) {
-        set.status = errorStatus[error.code];
-        return { error: error.message, code: error.code };
-      }
-    })
     .get("/health", () => ({ ok: true }))
     .get("/board", (): Board => db.board())
     .post(
       "/tasks",
-      ({ body, set }): Task => {
-        set.status = 201;
-        return db.createTask(body);
+      ({ body, status }): Task | unknown => {
+        try {
+          return status(201, db.createTask(body));
+        } catch (e) {
+          return fail(e, status);
+        }
       },
       {
         body: t.Object({
@@ -33,7 +41,13 @@ export const createApp = (db: KanbanDb) =>
     )
     .patch(
       "/tasks/:id",
-      ({ params, body }): Task => db.updateTask(params.id, body),
+      ({ params, body, status }): Task | unknown => {
+        try {
+          return db.updateTask(params.id, body);
+        } catch (e) {
+          return fail(e, status);
+        }
+      },
       {
         params: t.Object({ id: t.String() }),
         body: t.Object({
@@ -47,17 +61,24 @@ export const createApp = (db: KanbanDb) =>
     )
     .delete(
       "/tasks/:id",
-      ({ params }) => {
-        db.deleteTask(params.id);
-        return { ok: true };
+      ({ params, status }): unknown => {
+        try {
+          db.deleteTask(params.id);
+          return { ok: true };
+        } catch (e) {
+          return fail(e, status);
+        }
       },
       { params: t.Object({ id: t.String() }) },
     )
     .post(
       "/lanes",
-      ({ body, set }): Lane => {
-        set.status = 201;
-        return db.createLane(body);
+      ({ body, status }): Lane | unknown => {
+        try {
+          return status(201, db.createLane(body));
+        } catch (e) {
+          return fail(e, status);
+        }
       },
       {
         body: t.Object({
@@ -69,7 +90,13 @@ export const createApp = (db: KanbanDb) =>
     )
     .patch(
       "/lanes/:id",
-      ({ params, body }): Lane => db.updateLane(params.id, body),
+      ({ params, body, status }): Lane | unknown => {
+        try {
+          return db.updateLane(params.id, body);
+        } catch (e) {
+          return fail(e, status);
+        }
+      },
       {
         params: t.Object({ id: t.String() }),
         body: t.Object({
@@ -81,8 +108,12 @@ export const createApp = (db: KanbanDb) =>
     )
     .delete(
       "/lanes/:id",
-      ({ params, query }) => {
-        return db.deleteLane(params.id, query.force === "true");
+      ({ params, query, status }): unknown => {
+        try {
+          return db.deleteLane(params.id, query.force === "true");
+        } catch (e) {
+          return fail(e, status);
+        }
       },
       {
         params: t.Object({ id: t.String() }),
