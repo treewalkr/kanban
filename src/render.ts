@@ -1,0 +1,98 @@
+import type { KanbanDb, Lane, Task } from "./db";
+
+const enabled = !!process.stdout.isTTY && !process.env.NO_COLOR;
+
+const wrap = (code: string, s: string) => (enabled ? `\x1b[${code}m${s}\x1b[0m` : s);
+
+export const c = {
+  dim: (s: string) => wrap("2", s),
+  bold: (s: string) => wrap("1", s),
+  red: (s: string) => wrap("31", s),
+  green: (s: string) => wrap("32", s),
+  hex: (hex: string, s: string) => {
+    if (!enabled) return s;
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `\x1b[38;2;${r};${g};${b}m${s}\x1b[0m`;
+  },
+};
+
+export const LANE_COLORS = ["#7d8590", "#58a6ff", "#d29922", "#bc8cff", "#3fb950", "#ff7b72", "#39c5cf", "#e3b341"];
+
+export function laneColor(index: number): string {
+  return LANE_COLORS[index % LANE_COLORS.length];
+}
+
+function truncate(s: string, max: number): string {
+  const lines = s.split("\n")[0] ?? "";
+  return lines.length > max ? `${lines.slice(0, max - 1)}…` : lines;
+}
+
+/** Board overview: every lane (or one) with its tasks. */
+export function listLanes(db: KanbanDb, laneRef?: string, project?: string): string {
+  const all = db.lanes();
+  const lanes = laneRef ? [db.resolveLane(laneRef)] : all;
+  const width = process.stdout.columns ?? 80;
+  const out: string[] = [];
+  lanes.forEach((lane) => {
+    const idx = all.findIndex((l) => l.id === lane.id);
+    const color = laneColor(idx >= 0 ? idx : 0);
+    const tasks = db
+      .laneTasks(lane.id)
+      .filter((t) => (project ? t.project === project : true));
+    out.push(c.hex(color, `● ${lane.name}`) + c.dim(`  ${tasks.length}`));
+    if (tasks.length === 0) {
+      out.push(c.dim("  (empty)"));
+    } else {
+      for (const t of tasks) {
+        const chip = t.project ? c.dim(` [${t.project}]`) : "";
+        const titleWidth = Math.max(20, width - 10 - chip.length);
+        out.push(`  ${c.dim(t.id)}  ${truncate(t.title, titleWidth)}${chip}`);
+      }
+    }
+    out.push("");
+  });
+  return out.join("\n");
+}
+
+/** Compact single-line summary of a task, e.g. after add/mv/edit. */
+export function taskLine(db: KanbanDb, task: Task): string {
+  const lanes = db.lanes();
+  const lane = lanes.find((l) => l.id === task.laneId);
+  const color = laneColor(lanes.indexOf(lane!));
+  const chip = task.project ? c.dim(` [${task.project}]`) : "";
+  return `${c.green("✓")} ${c.dim(task.id)}  ${task.title}${chip}  ${c.hex(color, `→ ${lane?.name ?? task.laneId}`)}`;
+}
+
+/** Full detail view of one task. */
+export function taskDetail(db: KanbanDb, task: Task): string {
+  const lanes = db.lanes();
+  const lane = lanes.find((l) => l.id === task.laneId);
+  const color = laneColor(lanes.indexOf(lane!));
+  const out = [
+    c.bold(task.title),
+    `${c.dim("id:")}      ${task.id}`,
+    `${c.dim("lane:")}    ${c.hex(color, lane?.name ?? task.laneId)}${lane ? c.dim(` (${lane.id})`) : ""}`,
+    `${c.dim("project:")} ${task.project || c.dim("—")}`,
+    `${c.dim("created:")} ${new Date(task.createdAt).toLocaleString()}`,
+    `${c.dim("updated:")} ${new Date(task.updatedAt).toLocaleString()}`,
+  ];
+  if (task.note) {
+    out.push(c.dim("note:"));
+    for (const line of task.note.split("\n")) out.push(`  ${line}`);
+  }
+  return out.join("\n");
+}
+
+/** Lane list for `kanban lane ls`. */
+export function laneList(db: KanbanDb): string {
+  return db
+    .lanes()
+    .map((l, i) => {
+      const n = db.taskCount(l.id);
+      const fixed = l.fixed ? c.dim(" · fixed") : "";
+      return `${c.dim(`${i + 1}.`)} ${c.hex(laneColor(i), l.name)}${c.dim(` (${l.id})`)}  ${n}${fixed}`;
+    })
+    .join("\n");
+}
