@@ -8,13 +8,12 @@ const dist = join(import.meta.dir, "..", "web", "dist");
 
 const server = app;
 if (existsSync(dist)) {
-  const staticRoutes = await staticPlugin({ assets: dist, prefix: "/" });
+  // alwaysStatic registers one route per built file (no catch-all), leaving the SPA fallback to us
+  const staticRoutes = await staticPlugin({ assets: dist, prefix: "/", alwaysStatic: true, indexHTML: false });
+  const index = () => new Response(Bun.file(join(dist, "index.html")));
   server.use(staticRoutes);
-  // SPA fallback: unknown GET paths (no file extension) get index.html
-  server.get("*", ({ path }) => {
-    if (path.includes(".")) return new Response("not found", { status: 404 });
-    return new Response(Bun.file(join(dist, "index.html")));
-  });
+  server.get("/", index);
+  server.get("/*", ({ path }) => (path.includes(".") ? new Response("not found", { status: 404 }) : index()));
 }
 
 server.listen({ port, hostname: "127.0.0.1" });
