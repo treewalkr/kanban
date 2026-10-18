@@ -1,0 +1,66 @@
+# kanban
+
+A local-first Kanban board for the [pi](https://github.com/badlogic/pi-mono) coding agent to
+track and manage task state — one SQLite file, a web UI for humans, and a CLI for agents.
+
+Lanes default to the working workflow — **Backlog → Plan → Test + Implement → Review → Done** —
+and are customizable.
+
+## Stack
+
+Bun · Elysia (API, port `4600`) · Svelte 5 runes SPA (Vite, dev port `5174`) · Eden Treaty ·
+`bun:sqlite` (`data/kanban.db`, WAL). The CLI talks to SQLite directly, so the server never
+needs to be running for agent-side CRUD.
+
+## Install
+
+```bash
+bun install
+bun run build          # builds web/dist once (skip while only using the CLI)
+./scripts/install.sh   # symlinks `kanban` into ~/.bun/bin + installs the pi skill
+```
+
+## Use
+
+```bash
+kanban serve --open            # web UI at http://127.0.0.1:4600
+bun run dev                    # hacking: api watch + vite dev server
+```
+
+```bash
+kanban add Fix login redirect --note "bounces to / after oauth" --project my-app
+kanban mv <id> plan            # or --next / --prev
+kanban ls [--project my-app] [--json]
+kanban show <id> · edit <id> … · done <id> · rm <id>
+kanban lane ls | add | rename | rm
+```
+
+Task ids accept any unique prefix; lanes accept slug, prefix, name, or ordinal.
+`--json` everywhere for agent consumption; errors exit 1 with `kanban: <message>` on stderr.
+
+### pi agent
+
+The skill in `skills/kanban/SKILL.md` (installed to `~/.pi/agent/skills/kanban/` by
+`scripts/install.sh`) teaches pi the workflow contract: card per unit of work, advance it
+through lanes, never leave stale cards. The CLI writes the DB directly; the web UI polls and
+picks up CLI changes within a few seconds.
+
+## Scripts
+
+| script | does |
+| --- | --- |
+| `bun run dev` | api (`:4600`, watch) + web (`:5174`) |
+| `bun run build` | production web build → `web/dist` |
+| `bun run start` | serve api + built web on `127.0.0.1:4600` |
+| `bun test` | db + cli tests (uses temp DBs) |
+| `bun run check` | svelte-check + tsc |
+
+## Layout
+
+```
+src/    db.ts (sqlite + queries) · app.ts (elysia, type App) · index.ts (server)
+        cli.ts + render.ts (kanban CLI)
+web/    Svelte 5 SPA: board, cards, drag & drop, editor, filters
+skills/kanban/SKILL.md   pi skill (source of truth)
+data/kanban.db           your board (gitignored; KANBAN_DB overrides, used by tests)
+```
