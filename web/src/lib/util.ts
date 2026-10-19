@@ -1,7 +1,10 @@
-export const LANE_COLORS = ["#7d8590", "#58a6ff", "#d29922", "#bc8cff", "#3fb950", "#ff7b72", "#39c5cf", "#e3b341"];
+// Lane accents follow pi-web's theme accents: pastels on dark (a4c2f4 blue,
+// e8b27a ember, cdb4f0 dusk, acccb7 pine…), deeper hues on light. Defined as
+// --lane-N custom properties in app.css.
+const LANE_COUNT = 8;
 
 export function laneColor(index: number): string {
-  return LANE_COLORS[index % LANE_COLORS.length];
+  return `var(--lane-${index % LANE_COUNT}, var(--text-dim))`;
 }
 
 export function timeAgo(ts: number): string {

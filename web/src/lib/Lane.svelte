@@ -65,6 +65,7 @@
   ondragleave={ondragleave}
 >
   <header class="lane-head">
+    <span class="lane-dot"></span>
     {#if renaming}
       <input
         class="rename"

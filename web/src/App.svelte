@@ -5,6 +5,14 @@
   import TaskEditor from "./lib/TaskEditor.svelte";
   import AddLane from "./lib/AddLane.svelte";
 
+  let theme = $state(document.documentElement.dataset.theme === "light" ? "light" : "dark");
+
+  function toggleTheme() {
+    theme = theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("kanban-theme", theme);
+  }
+
   onMount(() => board.refresh());
 
   // keep the board in sync with CLI-side writes
@@ -34,6 +42,9 @@
       {/each}
     </div>
     <div class="meta">{board.tasks.length} tasks</div>
+    <button class="theme-toggle" onclick={toggleTheme} title="toggle theme">
+      {theme === "dark" ? "☀" : "☾"}
+    </button>
   </header>
 
   {#if board.loading}
