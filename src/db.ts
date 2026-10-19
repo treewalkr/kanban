@@ -82,6 +82,7 @@ export const DEFAULT_LANES: Array<Omit<Lane, "position">> = [
   { id: "implement", name: "Test + Implement", description: "Build it, test as you go", fixed: 0 },
   { id: "review", name: "Review", description: "Verify, polish, get sign-off", fixed: 0 },
   { id: "done", name: "Done", description: "Finished", fixed: 1 },
+  { id: "archive", name: "Archive", description: "Kept out of the way", fixed: 1 },
 ];
 
 export function defaultDbPath(): string {
@@ -129,6 +130,7 @@ export class KanbanDb {
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.db.exec(SCHEMA);
     this.seedLanes();
+    this.ensureArchiveLane();
   }
 
   close(): void {
@@ -149,6 +151,20 @@ export class KanbanDb {
     if (count.n > 0) return;
     const insert = this.q("INSERT INTO lanes (id, name, description, position, fixed) VALUES (?, ?, ?, ?, ?)");
     DEFAULT_LANES.forEach((lane, i) => insert.run(lane.id, lane.name, lane.description, (i + 1) * GAP, lane.fixed));
+  }
+
+  // boards created before the archive lane existed need it appended once
+  private ensureArchiveLane(): void {
+    const row = this.q("SELECT COUNT(*) AS n FROM lanes WHERE id = 'archive'").get() as { n: number };
+    if (row.n > 0) return;
+    const last = this.q("SELECT MAX(position) AS p FROM lanes").get() as { p: number | null };
+    this.q("INSERT INTO lanes (id, name, description, position, fixed) VALUES (?, ?, ?, ?, ?)").run(
+      "archive",
+      "Archive",
+      "Kept out of the way",
+      (last.p ?? 0) + GAP,
+      1,
+    );
   }
 
   // ---------- reads ----------

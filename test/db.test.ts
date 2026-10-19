@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Database } from "bun:sqlite";
 import { DEFAULT_LANES, KanbanDb, KanbanError } from "../src/db";
 
 let dir = "";
@@ -20,7 +21,23 @@ afterEach(() => {
 test("seeds the default workflow lanes in order", () => {
   const lanes = db.lanes();
   expect(lanes.map((l) => l.id)).toEqual(DEFAULT_LANES.map((l) => l.id));
-  expect(lanes.map((l) => l.position)).toEqual([100, 200, 300, 400, 500]);
+  expect(lanes.map((l) => l.position)).toEqual(DEFAULT_LANES.map((_, i) => (i + 1) * 100));
+  expect(lanes.at(-1)?.id).toBe("archive");
+  expect(lanes.at(-1)?.fixed).toBe(1);
+});
+
+test("appends the archive lane when reopening a board that predates it", () => {
+  const path = join(dir, "old.db");
+  new KanbanDb(path).close();
+  const raw = new Database(path); // simulate a board written before archive existed
+  raw.run("DELETE FROM lanes WHERE id = 'archive'");
+  raw.close();
+  const reopened = new KanbanDb(path);
+  const lanes = reopened.lanes();
+  expect(lanes.at(-1)?.id).toBe("archive");
+  expect(lanes.at(-1)?.fixed).toBe(1);
+  expect(lanes.at(-1)!.position).toBeGreaterThan(lanes.at(-2)!.position);
+  reopened.close();
 });
 
 test("createTask defaults to the first lane and appends in order", () => {
