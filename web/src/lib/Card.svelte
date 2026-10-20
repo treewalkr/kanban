@@ -13,9 +13,9 @@
   data-card={task.id}
   role="button"
   tabindex="0"
-  onclick={() => (board.editing = task)}
+  onclick={() => board.openCard(task)}
   onkeydown={(e) => {
-    if (e.key === "Enter") board.editing = task;
+    if (e.key === "Enter") board.openCard(task);
   }}
   ondragstart={(e) => {
     e.dataTransfer!.setData("text/plain", task.id);

@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { board } from "./lib/board.svelte";
   import LaneView from "./lib/Lane.svelte";
+  import TaskDetail from "./lib/TaskDetail.svelte";
   import TaskEditor from "./lib/TaskEditor.svelte";
   import AddLane from "./lib/AddLane.svelte";
 
@@ -59,7 +60,11 @@
   {/if}
 
   {#if board.editing}
-    <TaskEditor />
+    {#if board.editMode}
+      <TaskEditor />
+    {:else}
+      <TaskDetail />
+    {/if}
   {/if}
 
   {#if board.error}

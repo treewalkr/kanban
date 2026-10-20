@@ -11,12 +11,23 @@ class BoardStore {
   search = $state("");
   projectFilter = $state("");
   editing = $state<Task | null>(null);
+  editMode = $state(false);
   dragging = $state<string | null>(null);
   dropHint = $state<{ laneId: string; index: number } | null>(null);
 
   readonly projects = $derived(
     [...new Set(this.tasks.map((t) => t.project).filter((p) => p !== ""))].sort(),
   );
+
+  openCard(task: Task): void {
+    this.editing = task;
+    this.editMode = false;
+  }
+
+  closeCard(): void {
+    this.editing = null;
+    this.editMode = false;
+  }
 
   visibleTasks(laneId: string): Task[] {
     const q = this.search.trim().toLowerCase();
@@ -69,7 +80,7 @@ class BoardStore {
   async deleteTask(id: string): Promise<void> {
     const { error } = await api.tasks({ id }).delete();
     if (error) return this.fail(error);
-    this.editing = null;
+    this.closeCard();
     await this.refresh();
   }
 

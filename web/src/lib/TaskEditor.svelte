@@ -16,7 +16,7 @@
       project: project.trim(),
       lane: laneId,
     });
-    board.editing = null;
+    board.closeCard();
   }
 
   function remove() {
@@ -26,7 +26,7 @@
 
 <svelte:window
   onkeydown={(e) => {
-    if (e.key === "Escape") board.editing = null;
+    if (e.key === "Escape") board.closeCard();
   }}
 />
 
@@ -34,7 +34,7 @@
   class="overlay"
   role="presentation"
   onclick={(e) => {
-    if (e.target === e.currentTarget) board.editing = null;
+    if (e.target === e.currentTarget) board.closeCard();
   }}
 >
   <div class="editor" role="dialog" aria-label="edit card">
