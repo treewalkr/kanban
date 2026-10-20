@@ -14,6 +14,7 @@ usage:
   kanban mv <id> <lane> [--pos <1-based>]     kanban mv <id> --next | --prev
   kanban edit <id> [--title <t>] [--note <text>] [--project <tag>] [--clear-note]
   kanban done <id>
+  kanban archive <id>                        (undo: mv <id> <lane>)
   kanban rm <id>
   kanban lane ls | add <name> | rename <ref> <name> | rm <ref> [--force]
   kanban serve [--port <n>] [--open]
@@ -69,6 +70,13 @@ function stepLane(db: KanbanDb, task: Task, delta: number): string {
     throw new KanbanError(delta < 0 ? "already in the first lane" : "already in the last lane", "conflict");
   }
   return lanes[next].id;
+}
+
+/** Fixed target lane for done/archive — no silent fallback to another lane. */
+function laneById(db: KanbanDb, id: string): string {
+  const lane = db.lanes().find((l) => l.id === id);
+  if (!lane) throw new KanbanError(`no '${id}' lane on this board`, "not-found");
+  return lane.id;
 }
 
 async function main(): Promise<number> {
@@ -170,8 +178,15 @@ async function main(): Promise<number> {
 
       case "done": {
         const task = db.resolveTask(positional[0] ?? "");
-        const done = db.lanes().find((l) => l.id === "done") ?? db.lanes().at(-1)!;
-        const moved = db.moveTask(task.id, done.id);
+        const moved = db.moveTask(task.id, laneById(db, "done"));
+        if (json) jsonOut(moved);
+        else console.log(taskLine(db, moved));
+        return 0;
+      }
+
+      case "archive": {
+        const task = db.resolveTask(positional[0] ?? "");
+        const moved = db.moveTask(task.id, laneById(db, "archive"));
         if (json) jsonOut(moved);
         else console.log(taskLine(db, moved));
         return 0;

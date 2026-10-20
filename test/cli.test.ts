@@ -63,6 +63,20 @@ test("add → ls --json → mv → done → rm roundtrip", async () => {
   expect(JSON.parse((await cli("ls", "--json")).stdout)).toHaveLength(1);
 });
 
+test("archive moves a card out of the way and mv brings it back", async () => {
+  const added = await cli("add", "ship it", "--lane", "review", "--json");
+  const task = JSON.parse(added.stdout) as Task;
+
+  const archived = await cli("archive", task.id, "--json");
+  expect(archived.code).toBe(0);
+  expect(JSON.parse(archived.stdout).laneId).toBe("archive");
+
+  const restored = await cli("mv", task.id, "backlog", "--json");
+  expect(JSON.parse(restored.stdout).laneId).toBe("backlog");
+
+  await cli("rm", task.id, "--json");
+});
+
 test("human ls output groups by lane", async () => {
   await cli("add", "human readable", "--lane", "back");
   const out = await cli("ls");
