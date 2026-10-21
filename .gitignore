@@ -3,3 +3,7 @@ web/dist/
 data/
 *.log
 .DS_Store
+
+# agent tooling
+.zcode/
+.playwright-cli/
