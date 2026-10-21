@@ -1,5 +1,6 @@
 <script lang="ts">
   import { board } from "./board.svelte";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
 
   const source = board.editing!;
 
@@ -7,6 +8,7 @@
   let note = $state(source.note);
   let project = $state(source.project);
   let laneId = $state(source.laneId);
+  let confirming = $state(false);
 
   async function save() {
     if (!title.trim()) return;
@@ -19,14 +21,17 @@
     board.closeCard();
   }
 
-  function remove() {
+  function confirmRemove() {
+    confirming = false;
     board.deleteTask(source.id);
   }
 </script>
 
 <svelte:window
   onkeydown={(e) => {
-    if (e.key === "Escape") board.closeCard();
+    if (e.key !== "Escape") return;
+    if (confirming) confirming = false;
+    else board.closeCard();
   }}
 />
 
@@ -64,8 +69,17 @@
     <div class="editor-actions">
       <span class="id">{source.id}</span>
       <span class="spacer"></span>
-      <button class="danger" onclick={remove}>delete</button>
+      <button class="danger" onclick={() => (confirming = true)}>delete</button>
       <button class="primary" onclick={save} disabled={!title.trim()}>save</button>
     </div>
   </div>
 </div>
+
+{#if confirming}
+  <ConfirmDialog
+    title="Delete card"
+    message={'Permanently delete “' + source.title + '”? There is no undo.'}
+    onconfirm={confirmRemove}
+    oncancel={() => (confirming = false)}
+  />
+{/if}
