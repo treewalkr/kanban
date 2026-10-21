@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Task } from "../src/db";
-import { checklistLines, searchBoard } from "../web/src/lib/search";
+import { checklistLines, searchBoard } from "../src/search";
 
 function task(partial: Partial<Task> & { id: string; title: string }): Task {
   return {

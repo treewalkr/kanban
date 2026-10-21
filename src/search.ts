@@ -1,4 +1,4 @@
-import type { Task } from "../../../src/db";
+import type { Task } from "./db";
 
 export type SearchResultKind = "title" | "checklist" | "note";
 

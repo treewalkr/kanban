@@ -1,6 +1,6 @@
 import { api } from "../api";
 import type { Lane, LanePatch, Task, TaskPatch } from "../../../src/db";
-import { searchBoard } from "./search";
+import { searchBoard } from "../../../src/search";
 
 type EdenError = { value?: unknown };
 

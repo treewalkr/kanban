@@ -1,6 +1,6 @@
 <script lang="ts">
   import { board } from "./board.svelte";
-  import type { SearchResult } from "./search";
+  import type { SearchResult } from "../../../src/search";
 
   let input = $state<HTMLInputElement>();
   let open = $state(false);
