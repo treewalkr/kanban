@@ -35,6 +35,7 @@ export const createApp = (db: KanbanDb) =>
           note: t.Optional(t.String()),
           lane: t.Optional(t.String()),
           project: t.Optional(t.String()),
+          parent: t.Optional(t.Nullable(t.String())),
           index: t.Optional(t.Number({ minimum: 0 })),
         }),
       },
@@ -55,21 +56,25 @@ export const createApp = (db: KanbanDb) =>
           note: t.Optional(t.String()),
           project: t.Optional(t.String()),
           lane: t.Optional(t.String()),
+          parent: t.Optional(t.Nullable(t.String())),
           index: t.Optional(t.Number({ minimum: 0 })),
         }),
       },
     )
     .delete(
       "/tasks/:id",
-      ({ params, status }): unknown => {
+      ({ params, query, status }): unknown => {
         try {
-          db.deleteTask(params.id);
+          db.deleteTask(params.id, query.force === "true");
           return { ok: true };
         } catch (e) {
           return fail(e, status);
         }
       },
-      { params: t.Object({ id: t.String() }) },
+      {
+        params: t.Object({ id: t.String() }),
+        query: t.Object({ force: t.Optional(t.String()) }),
+      },
     )
     .post(
       "/lanes",
