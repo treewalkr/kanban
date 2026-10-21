@@ -452,6 +452,57 @@ button:focus-visible {
   background: var(--accent);
 }
 
+/* collapsed archive strip */
+
+.lane.collapsed {
+  width: 44px;
+  flex: 0 0 44px;
+  min-height: 72px;
+  align-items: center;
+  padding: 10px 0 12px;
+}
+
+.collapsed-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  transition: color 0.12s;
+}
+
+.collapsed-head:hover {
+  color: var(--text);
+}
+
+.collapsed-name {
+  writing-mode: vertical-rl;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  user-select: none;
+}
+
+.lane.collapsed .count {
+  padding: 0 5px;
+}
+
+/* archived cards sit a step back */
+
+.lane.archive-lane .card {
+  opacity: 0.72;
+}
+
+.lane.archive-lane .card:hover,
+.lane.archive-lane .card.dragging {
+  opacity: 1;
+}
+
 .add-card {
   margin: 0 8px 8px;
   padding: 5px 9px;

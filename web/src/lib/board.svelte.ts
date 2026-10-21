@@ -12,11 +12,19 @@ class BoardStore {
   projectFilter = $state("");
   editing = $state<Task | null>(null);
   editMode = $state(false);
+  archiveOpen = $state(false);
   dragging = $state<string | null>(null);
   dropHint = $state<{ laneId: string; index: number } | null>(null);
 
   readonly projects = $derived(
     [...new Set(this.tasks.map((t) => t.project).filter((p) => p !== ""))].sort(),
+  );
+
+  readonly activeCount = $derived(this.tasks.filter((t) => t.laneId !== "archive").length);
+
+  // a search that matches archived cards reveals the collapsed strip
+  readonly archiveSearchHit = $derived(
+    this.search.trim() !== "" && this.visibleTasks("archive").length > 0,
   );
 
   openCard(task: Task): void {

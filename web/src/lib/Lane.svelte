@@ -7,7 +7,7 @@
 
   let { lane, index }: { lane: Lane; index: number } = $props();
 
-  let el: HTMLElement;
+  let el = $state<HTMLElement>();
   let composing = $state(false);
   let renaming = $state(false);
   let renameValue = $state("");
@@ -17,8 +17,11 @@
   let hint = $derived(
     board.dropHint && board.dropHint.laneId === lane.id ? board.dropHint.index : -1,
   );
+  let isArchive = $derived(lane.id === "archive");
+  let collapsed = $derived(isArchive && !board.archiveOpen && !board.archiveSearchHit);
 
   function hintIndex(e: DragEvent): number {
+    if (!el) return 0;
     const card = (e.target as HTMLElement).closest("[data-card]");
     const cards = [...el.querySelectorAll("[data-card]")];
     if (!card) return cards.length;
@@ -44,7 +47,7 @@
 
   function ondragleave(e: DragEvent) {
     const to = e.relatedTarget as Node | null;
-    if (!el.contains(to)) board.dropHint = null;
+    if (!el || !el.contains(to)) board.dropHint = null;
   }
 
   function commitRename() {
@@ -54,58 +57,87 @@
   }
 </script>
 
-<section
-  class="lane"
-  bind:this={el}
-  style="--accent: {laneColor(index)}"
-  role="group"
-  aria-label={lane.name}
-  ondragover={ondragover}
-  ondrop={ondrop}
-  ondragleave={ondragleave}
->
-  <header class="lane-head">
-    <span class="lane-dot"></span>
-    {#if renaming}
-      <input
-        class="rename"
-        bind:value={renameValue}
-        onblur={commitRename}
-        onkeydown={(e) => {
-          if (e.key === "Enter") commitRename();
-          if (e.key === "Escape") renaming = false;
-        }}
-      />
+{#if collapsed}
+  <section
+    class="lane collapsed"
+    style="--accent: {laneColor(index)}"
+    role="group"
+    aria-label="{lane.name} (collapsed)"
+    ondragover={(e) => {
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = "move";
+    }}
+    ondrop={(e) => {
+      e.preventDefault();
+      const id = e.dataTransfer!.getData("text/plain");
+      board.dragging = null;
+      if (id) board.moveTask(id, lane.id);
+    }}
+  >
+    <button class="collapsed-head" title="expand {lane.name}" onclick={() => (board.archiveOpen = true)}>
+      <span class="lane-dot"></span>
+      <span class="collapsed-name">{lane.name}</span>
+      <span class="count">{count}</span>
+    </button>
+  </section>
+{:else}
+  <section
+    class="lane"
+    class:archive-lane={isArchive}
+    bind:this={el}
+    style="--accent: {laneColor(index)}"
+    role="group"
+    aria-label={lane.name}
+    ondragover={ondragover}
+    ondrop={ondrop}
+    ondragleave={ondragleave}
+  >
+    <header class="lane-head">
+      <span class="lane-dot"></span>
+      {#if renaming}
+        <input
+          class="rename"
+          bind:value={renameValue}
+          onblur={commitRename}
+          onkeydown={(e) => {
+            if (e.key === "Enter") commitRename();
+            if (e.key === "Escape") renaming = false;
+          }}
+        />
+      {:else}
+        <h2 title="{lane.description} (double-click to rename)" ondblclick={() => { renameValue = lane.name; renaming = true; }}>
+          {lane.name}
+        </h2>
+      {/if}
+      <span class="count">{count}</span>
+      <span class="lane-tools">
+        {#if isArchive}
+          <button title="collapse lane" onclick={() => (board.archiveOpen = false)}>»</button>
+        {/if}
+        {#if index > 0}
+          <button title="move lane left" onclick={() => board.moveLane(lane.id, index - 1)}>‹</button>
+        {/if}
+        {#if index < board.lanes.length - 1}
+          <button title="move lane right" onclick={() => board.moveLane(lane.id, index + 1)}>›</button>
+        {/if}
+        {#if !lane.fixed}
+          <button class="danger" title="delete lane" onclick={() => board.removeLane(lane.id)}>✕</button>
+        {/if}
+      </span>
+    </header>
+
+    <div class="cards">
+      {#each visible as task, i (task.id)}
+        {#if hint === i}<div class="drop-gap"></div>{/if}
+        <CardView {task} />
+      {/each}
+      {#if hint >= visible.length}<div class="drop-gap"></div>{/if}
+    </div>
+
+    {#if composing}
+      <Composer {lane} onclose={() => (composing = false)} />
     {:else}
-      <h2 title="{lane.description} (double-click to rename)" ondblclick={() => { renameValue = lane.name; renaming = true; }}>
-        {lane.name}
-      </h2>
+      <button class="add-card" onclick={() => (composing = true)}>+ add a card</button>
     {/if}
-    <span class="count">{count}</span>
-    <span class="lane-tools">
-      {#if index > 0}
-        <button title="move lane left" onclick={() => board.moveLane(lane.id, index - 1)}>‹</button>
-      {/if}
-      {#if index < board.lanes.length - 1}
-        <button title="move lane right" onclick={() => board.moveLane(lane.id, index + 1)}>›</button>
-      {/if}
-      {#if !lane.fixed}
-        <button class="danger" title="delete lane" onclick={() => board.removeLane(lane.id)}>✕</button>
-      {/if}
-    </span>
-  </header>
-
-  <div class="cards">
-    {#each visible as task, i (task.id)}
-      {#if hint === i}<div class="drop-gap"></div>{/if}
-      <CardView {task} />
-    {/each}
-    {#if hint >= visible.length}<div class="drop-gap"></div>{/if}
-  </div>
-
-  {#if composing}
-    <Composer {lane} onclose={() => (composing = false)} />
-  {:else}
-    <button class="add-card" onclick={() => (composing = true)}>+ add a card</button>
-  {/if}
-</section>
+  </section>
+{/if}

@@ -42,7 +42,7 @@
         </button>
       {/each}
     </div>
-    <div class="meta">{board.tasks.length} tasks</div>
+    <div class="meta">{board.activeCount} tasks</div>
     <button class="theme-toggle" onclick={toggleTheme} title="toggle theme">
       {theme === "dark" ? "☀" : "☾"}
     </button>
