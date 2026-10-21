@@ -1,6 +1,6 @@
 ---
 name: kanban
-description: Track and manage task state on the Kanban board (Backlog → Plan → Test + Implement → Review → Done) using the kanban CLI. Use when starting, planning, or finishing a unit of work; when the user mentions tasks, the board, kanban, backlog, "what's next", or moving work forward; and to review what's in flight.
+description: Track and manage task state on the Kanban board (Backlog → Plan → Test + Implement → Review → Done → Archive) using the kanban CLI. Use when starting, planning, or finishing a unit of work; when the user mentions tasks, the board, kanban, backlog, "what's next", or moving work forward; and to review what's in flight.
 ---
 
 # Kanban board
@@ -18,6 +18,7 @@ Keep the board truthful as you work. Lanes and their meaning, in order:
 3. **Test + Implement** — actively building (test as you go)
 4. **Review** — code done, verifying / awaiting user acceptance
 5. **Done** — finished
+6. **Archive** — kept for reference, out of the active board
 
 For every non-trivial unit of work:
 
@@ -26,6 +27,8 @@ For every non-trivial unit of work:
 - **As you progress**: advance the card (`mv implement`, then `mv review` when
   the work looks complete).
 - **After acceptance**: `mv done` (or `done <id>`).
+- **When a finished card is worth keeping but Done is getting crowded**:
+  `archive <id>`. Undo with `mv <id> <lane>`.
 - **If work is abandoned or superseded**: delete the card (`rm`). Never leave
   stale cards behind — the board must reflect reality.
 
@@ -39,6 +42,7 @@ kanban mv <id> <lane> [--pos <1-based>]                               # move / r
 kanban mv <id> --next | --prev                                        # advance / pull back one lane
 kanban edit <id> [--title <t>] [--note <text>] [--project <tag>] [--clear-note]
 kanban done <id>                                                      # shortcut → Done
+kanban archive <id>                                                   # shortcut → Archive
 kanban rm <id>                                                        # delete card
 kanban lane ls | add <name> | rename <ref> <name> | rm <ref>          # manage lanes
 kanban serve [--open]                                                 # start web UI at 127.0.0.1:4600
@@ -56,14 +60,18 @@ kanban serve [--open]                                                 # start we
 - **`--json`**: append to any command for machine-readable output; on error the
   CLI exits 1 and prints `kanban: <message>` to stderr.
 - The web UI edits the same database and polls every few seconds, so CLI and
-  browser changes stay in sync automatically.
+  browser changes stay in sync automatically. Clicking a card opens a detail
+  view (full note, timestamps, quick done/archive actions) with an edit mode.
+  Archive shows as a collapsed strip at the end of the board — click to expand,
+  or drag a card onto it to archive.
 - First run of a command creates `data/kanban.db` in the app repo and seeds the
-  five default lanes (Backlog / Plan / Test + Implement / Review / Done). Lanes
-  are customizable — `lane add`/`rename`/`rm` — but keep `backlog` and `done`
-  at the ends; they are fixed.
+  six default lanes (Backlog / Plan / Test + Implement / Review / Done /
+  Archive). Lanes are customizable — `lane add`/`rename`/`rm` — but keep
+  `backlog` and `done` at the ends; they are fixed, as is `archive`.
 
 ## When the user asks "what's next" / to plan the day
 
 Run `kanban ls` (or `--json`), read Review first (awaiting acceptance), then
-Test + Implement (in flight), then Plan, then Backlog. Summarize per lane and
-propose the next card to pull forward.
+Test + Implement (in flight), then Plan, then Backlog. Skip Archive — it's
+history, not work. Summarize per lane and propose the next card to pull
+forward.

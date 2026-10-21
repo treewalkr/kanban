@@ -3,8 +3,9 @@
 A local-first Kanban board for the [pi](https://github.com/badlogic/pi-mono) coding agent to
 track and manage task state — one SQLite file, a web UI for humans, and a CLI for agents.
 
-Lanes default to the working workflow — **Backlog → Plan → Test + Implement → Review → Done** —
-and are customizable.
+Lanes default to the working workflow — **Backlog → Plan → Test + Implement → Review → Done →
+Archive** — and are customizable. Archive keeps finished cards out of the way: a collapsed strip
+on the board (click to expand, drag onto it to archive), `kanban archive <id>` from the CLI.
 
 ## Stack
 
@@ -31,7 +32,7 @@ bun run dev                    # hacking: api watch + vite dev server
 kanban add Fix login redirect --note "bounces to / after oauth" --project my-app
 kanban mv <id> plan            # or --next / --prev
 kanban ls [--project my-app] [--json]
-kanban show <id> · edit <id> … · done <id> · rm <id>
+kanban show <id> · edit <id> … · done <id> · archive <id> · rm <id>
 kanban lane ls | add | rename | rm
 ```
 
@@ -60,7 +61,7 @@ picks up CLI changes within a few seconds.
 ```
 src/    db.ts (sqlite + queries) · app.ts (elysia, type App) · index.ts (server)
         cli.ts + render.ts (kanban CLI)
-web/    Svelte 5 SPA: board, cards, drag & drop, editor, filters
+web/    Svelte 5 SPA: board, cards, drag & drop, card detail view, editor, filters
 skills/kanban/SKILL.md   pi skill (source of truth)
 data/kanban.db           your board (gitignored; KANBAN_DB overrides, used by tests)
 ```
