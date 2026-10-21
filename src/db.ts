@@ -17,6 +17,7 @@ export interface Task {
   note: string;
   laneId: string;
   project: string;
+  parentId: string | null;
   position: number;
   createdAt: number;
   updatedAt: number;
@@ -69,11 +70,13 @@ CREATE TABLE IF NOT EXISTS tasks (
   note TEXT NOT NULL DEFAULT '',
   lane_id TEXT NOT NULL REFERENCES lanes (id),
   project TEXT NOT NULL DEFAULT '',
+  parent_id TEXT REFERENCES tasks (id),
   position REAL NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS tasks_lane_order ON tasks (lane_id, position);
+CREATE INDEX IF NOT EXISTS tasks_parent ON tasks (parent_id);
 `;
 
 export const DEFAULT_LANES: Array<Omit<Lane, "position">> = [
@@ -103,6 +106,7 @@ interface TaskRow {
   note: string;
   lane_id: string;
   project: string;
+  parent_id: string | null;
   position: number;
   created_at: number;
   updated_at: number;
@@ -115,6 +119,7 @@ const rowToTask = (r: TaskRow): Task => ({
   note: r.note,
   laneId: r.lane_id,
   project: r.project,
+  parentId: r.parent_id,
   position: r.position,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -128,6 +133,7 @@ export class KanbanDb {
     mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path);
     this.db.exec("PRAGMA journal_mode = WAL;");
+    this.ensureParentColumn();
     this.db.exec(SCHEMA);
     this.seedLanes();
     this.ensureArchiveLane();
@@ -151,6 +157,18 @@ export class KanbanDb {
     if (count.n > 0) return;
     const insert = this.q("INSERT INTO lanes (id, name, description, position, fixed) VALUES (?, ?, ?, ?, ?)");
     DEFAULT_LANES.forEach((lane, i) => insert.run(lane.id, lane.name, lane.description, (i + 1) * GAP, lane.fixed));
+  }
+
+  // boards created before task hierarchy existed need the column added once;
+  // runs before exec(SCHEMA) so the tasks_parent index never sees a missing column
+  private ensureParentColumn(): void {
+    const table = this.q("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get() as
+      | { name: string }
+      | null;
+    if (!table) return; // fresh db: SCHEMA creates the table with the column
+    const cols = this.q("PRAGMA table_info(tasks)").all() as Array<{ name: string }>;
+    if (cols.some((col) => col.name === "parent_id")) return;
+    this.db.exec("ALTER TABLE tasks ADD COLUMN parent_id TEXT REFERENCES tasks (id)");
   }
 
   // boards created before the archive lane existed need it appended once

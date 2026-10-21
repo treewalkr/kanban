@@ -40,6 +40,29 @@ test("appends the archive lane when reopening a board that predates it", () => {
   reopened.close();
 });
 
+test("adds the parent column when reopening a board that predates hierarchy", () => {
+  const path = join(dir, "old.db");
+  const raw = new Database(path); // simulate a board written before parent_id existed
+  raw.exec(`
+    CREATE TABLE lanes (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+      position REAL NOT NULL, fixed INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE tasks (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, note TEXT NOT NULL DEFAULT '',
+      lane_id TEXT NOT NULL REFERENCES lanes (id), project TEXT NOT NULL DEFAULT '',
+      position REAL NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );
+    INSERT INTO lanes (id, name, description, position, fixed) VALUES ('todo', 'Todo', '', 100, 0);
+    INSERT INTO tasks (id, title, note, lane_id, project, position, created_at, updated_at)
+      VALUES ('abc12', 'legacy', '', 'todo', '', 100, 0, 0);
+  `);
+  raw.close();
+  const reopened = new KanbanDb(path);
+  expect(reopened.resolveTask("abc12").parentId).toBeNull();
+  reopened.close();
+});
+
 test("createTask defaults to the first lane and appends in order", () => {
   const a = db.createTask({ title: "a" });
   const b = db.createTask({ title: "b" });
