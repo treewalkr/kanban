@@ -467,6 +467,23 @@ button:focus-visible {
   transition: background 0.12s, border-color 0.12s;
 }
 
+/* a search jump landing on this card */
+.card.flash {
+  animation: card-flash 1.5s ease-out;
+}
+
+@keyframes card-flash {
+  0%,
+  35% {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  100% {
+    border-color: var(--border);
+    box-shadow: none;
+  }
+}
+
 .card:hover {
   background: var(--bg-selected);
   border-color: color-mix(in srgb, var(--border) 55%, var(--text-muted));

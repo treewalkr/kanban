@@ -39,6 +39,18 @@
       document.removeEventListener("visibilitychange", refresh);
     };
   });
+
+  // after a search jump's modal closes, scroll the card into view and flash it
+  $effect(() => {
+    const id = board.flashId;
+    if (!id || board.editing) return;
+    board.flashId = null;
+    const el = document.querySelector(`[data-card="${CSS.escape(id)}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+    el.classList.add("flash");
+    setTimeout(() => el.classList.remove("flash"), 1500);
+  });
 </script>
 
 <div class="app">
