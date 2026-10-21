@@ -15,9 +15,71 @@ function fail(e: unknown, status: (code: number, value: unknown) => unknown): un
   throw e;
 }
 
-export const createApp = (db: KanbanDb) =>
-  new Elysia()
+/** Coalescing change bus feeding /events: bursts of writes become one notification. */
+function createChangeBus() {
+  const subs = new Set<() => void>();
+  let scheduled: ReturnType<typeof setTimeout> | null = null;
+  return {
+    subscribe(cb: () => void): () => void {
+      subs.add(cb);
+      return () => {
+        subs.delete(cb);
+      };
+    },
+    emit(): void {
+      if (scheduled) return;
+      scheduled = setTimeout(() => {
+        scheduled = null;
+        for (const cb of subs) cb();
+      }, 100);
+    },
+  };
+}
+
+export const createApp = (db: KanbanDb) => {
+  const bus = createChangeBus();
+  db.watch(() => bus.emit()); // CLI writes commit from another connection
+  return new Elysia()
     .use(cors({ origin: /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/ }))
+    .onAfterHandle(({ request }) => {
+      // API writes share the watched connection, so data_version won't see them
+      if (request.method !== "GET") bus.emit();
+    })
+    .get("/events", ({ request }) => {
+      const encoder = new TextEncoder();
+      let closed = false;
+      let unsubscribe: (() => void) | null = null;
+      let heartbeat: ReturnType<typeof setInterval> | null = null;
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        unsubscribe?.();
+        if (heartbeat) clearInterval(heartbeat);
+        request.signal.removeEventListener("abort", close);
+      };
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            const send = (data: string) => {
+              try {
+                controller.enqueue(encoder.encode(data));
+              } catch {
+                close(); // stream already gone (client disconnected)
+              }
+            };
+            send("event: change\ndata: {}\n\n"); // a fresh subscriber syncs right away
+            unsubscribe = bus.subscribe(() => send("event: change\ndata: {}\n\n"));
+            heartbeat = setInterval(() => send(": ping\n\n"), 30_000);
+            heartbeat.unref();
+            request.signal.addEventListener("abort", close);
+          },
+          cancel() {
+            close();
+          },
+        }),
+        { headers: { "content-type": "text/event-stream", "cache-control": "no-cache" } },
+      );
+    })
     .get("/health", () => ({ ok: true }))
     .get("/board", (): Board => db.board())
     .post(
@@ -125,6 +187,7 @@ export const createApp = (db: KanbanDb) =>
         query: t.Object({ force: t.Optional(t.String()) }),
       },
     );
+};
 
 export const app = createApp(new KanbanDb(defaultDbPath()));
 export type App = typeof app;
