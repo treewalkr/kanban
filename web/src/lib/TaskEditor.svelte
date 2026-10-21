@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Task } from "../../../src/db";
   import { board } from "./board.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
 
@@ -8,7 +9,24 @@
   let note = $state(source.note);
   let project = $state(source.project);
   let laneId = $state(source.laneId);
+  let parentId = $state(source.parentId ?? "");
   let confirming = $state(false);
+
+  // candidates mirror the api rule: depth(candidate) + 1 + subtree height ≤ 2
+  let candidates = $derived.by(() => {
+    const heightOf = (id: string): number => {
+      const kids = board.childrenOf(id);
+      return kids.length === 0 ? 0 : 1 + Math.max(...kids.map((k) => heightOf(k.id)));
+    };
+    const banned = new Set([source.id, ...board.descendantsOf(source.id).map((t) => t.id)]);
+    const height = heightOf(source.id);
+    return board.tasks
+      .filter((t) => !banned.has(t.id))
+      .filter((t) => board.ancestorsOf(t.id).length + 1 + height <= 2)
+      .sort((a, b) => a.title.localeCompare(b.title));
+  });
+
+  let descendantCount = $derived(board.descendantsOf(source.id).length);
 
   async function save() {
     if (!title.trim()) return;
@@ -17,13 +35,14 @@
       note,
       project: project.trim(),
       lane: laneId,
+      parent: parentId || null,
     });
     board.closeCard();
   }
 
   function confirmRemove() {
     confirming = false;
-    board.deleteTask(source.id);
+    board.deleteTask(source.id, true); // the confirm dialog is the guard
   }
 </script>
 
@@ -66,6 +85,15 @@
         </select>
       </label>
     </div>
+    <label>
+      parent
+      <select bind:value={parentId}>
+        <option value="">(none)</option>
+        {#each candidates as c (c.id)}
+          <option value={c.id}>{c.title} · {c.id}</option>
+        {/each}
+      </select>
+    </label>
     <div class="editor-actions">
       <span class="id">{source.id}</span>
       <span class="spacer"></span>
@@ -78,7 +106,15 @@
 {#if confirming}
   <ConfirmDialog
     title="Delete card"
-    message={'Permanently delete “' + source.title + '”? There is no undo.'}
+    message={
+      descendantCount > 0
+        ? 'Permanently delete “' +
+          source.title +
+          '” and its ' +
+          (descendantCount === 1 ? '1 subtask' : descendantCount + ' subtasks') +
+          '? There is no undo.'
+        : 'Permanently delete “' + source.title + '”? There is no undo.'
+    }
     onconfirm={confirmRemove}
     oncancel={() => (confirming = false)}
   />

@@ -1,18 +1,51 @@
 <script lang="ts">
+  import type { Task } from "../../../src/db";
   import { board } from "./board.svelte";
   import { renderMarkdown } from "./markdown";
   import { laneColor, timeAgo } from "./util";
 
   const task = board.editing!;
 
-  let laneIndex = $derived(Math.max(0, board.lanes.findIndex((l) => l.id === task.laneId)));
-  let laneName = $derived(board.lanes[laneIndex]?.name ?? task.laneId);
+  // live copy: refresh replaces board.tasks, so derive everything hierarchy-ish from it
+  let me = $derived(board.taskById(task.id) ?? task);
+  let ancestors = $derived(board.ancestorsOf(task.id));
+  let progress = $derived(board.progressOf(me));
+
+  // descendants flattened with depth for the tree list
+  let childRows = $derived.by(() => {
+    const rows: Array<{ t: Task; depth: number }> = [];
+    const walk = (id: string, depth: number): void => {
+      for (const c of board.childrenOf(id)) {
+        rows.push({ t: c, depth });
+        walk(c.id, depth + 1);
+      }
+    };
+    walk(task.id, 0);
+    return rows;
+  });
+
+  // subtasks cannot have children — hide the composer one level above that
+  let canAddSubtasks = $derived(ancestors.length < 2);
+
+  let laneIndex = $derived(Math.max(0, board.lanes.findIndex((l) => l.id === me.laneId)));
+  let laneName = $derived(board.lanes[laneIndex]?.name ?? me.laneId);
+  let subtaskTitle = $state("");
 
   const fmt = (ts: number) => new Date(ts).toLocaleString();
+
+  const childLaneIndex = (t: Task): number =>
+    Math.max(0, board.lanes.findIndex((l) => l.id === t.laneId));
 
   async function toLane(laneId: string) {
     await board.moveTask(task.id, laneId);
     board.closeCard();
+  }
+
+  async function addSubtask() {
+    const title = subtaskTitle.trim();
+    if (!title) return;
+    subtaskTitle = "";
+    await board.addTask(me.laneId, title, undefined, task.id);
   }
 </script>
 
@@ -33,25 +66,67 @@
     <div class="detail-head">
       <span class="lane-dot"></span>
       <span class="detail-lane">{laneName}</span>
-      {#if task.project}<span class="chip">{task.project}</span>{/if}
+      {#if me.project}<span class="chip">{me.project}</span>{/if}
     </div>
-    <h2 class="detail-title">{task.title}</h2>
-    {#if task.note}
-      <div class="detail-note md">{@html renderMarkdown(task.note)}</div>
+    {#if ancestors.length > 0}
+      <nav class="breadcrumb" aria-label="parent cards">
+        {#each ancestors as a, i (a.id)}
+          {#if i > 0}<span class="sep">›</span>{/if}
+          <button title="open {a.title}" onclick={() => board.openCard(a)}>{a.title}</button>
+        {/each}
+      </nav>
+    {/if}
+    <h2 class="detail-title">{me.title}</h2>
+    {#if me.note}
+      <div class="detail-note md">{@html renderMarkdown(me.note)}</div>
     {:else}
       <p class="detail-note empty">no note</p>
     {/if}
+    {#if childRows.length > 0}
+      <div class="detail-children">
+        <div class="children-head">
+          subtasks
+          {#if progress.total > 0}
+            <span class="progress" class:complete={progress.done === progress.total}>
+              {progress.done}/{progress.total} ✓
+            </span>
+          {/if}
+        </div>
+        <ul>
+          {#each childRows as row (row.t.id)}
+            <li style="padding-left: {row.depth * 14}px">
+              <button class="child-row" title="open {row.t.title}" onclick={() => board.openCard(row.t)}>
+                <span class="lane-dot" style="--accent: {laneColor(childLaneIndex(row.t))}"></span>
+                <span class="t">{row.t.title}</span>
+                {#if row.t.laneId === "done"}<span class="tick">✓</span>{/if}
+              </button>
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
     <div class="detail-meta">
-      <div><span class="k">created</span>{fmt(task.createdAt)}</div>
-      <div><span class="k">updated</span>{fmt(task.updatedAt)} · {timeAgo(task.updatedAt)}</div>
+      <div><span class="k">created</span>{fmt(me.createdAt)}</div>
+      <div><span class="k">updated</span>{fmt(me.updatedAt)} · {timeAgo(me.updatedAt)}</div>
     </div>
+    {#if canAddSubtasks}
+      <form
+        class="add-subtask"
+        onsubmit={(e) => {
+          e.preventDefault();
+          addSubtask();
+        }}
+      >
+        <input placeholder="+ add subtask" bind:value={subtaskTitle} />
+      </form>
+    {/if}
     <div class="editor-actions">
-      <span class="id">{task.id}</span>
+      <span class="id">{me.id}</span>
       <span class="spacer"></span>
-      {#if task.laneId !== "done"}
+      {#if me.laneId !== "done"}
         <button class="ghost" onclick={() => toLane("done")}>✓ done</button>
       {/if}
-      {#if task.laneId !== "archive"}
+      {#if me.laneId !== "archive"}
         <button class="ghost" onclick={() => toLane("archive")}>archive</button>
       {/if}
       <button class="primary" onclick={() => (board.editMode = true)}>edit</button>

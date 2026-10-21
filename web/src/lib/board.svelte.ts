@@ -56,6 +56,19 @@ class BoardStore {
     return this.tasks.find((t) => t.id === id);
   }
 
+  /** Ancestor chain of a task, root first (epic → story). */
+  ancestorsOf(id: string): Task[] {
+    const chain: Task[] = [];
+    let cur = this.taskById(id);
+    while (cur?.parentId) {
+      const parent = this.taskById(cur.parentId);
+      if (!parent) break;
+      chain.unshift(parent);
+      cur = parent;
+    }
+    return chain;
+  }
+
   /** True when the task passes the current search/project filter. */
   matches(t: Task): boolean {
     if (this.projectFilter && t.project !== this.projectFilter) return false;
