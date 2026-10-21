@@ -35,15 +35,15 @@ For every non-trivial unit of work:
 ## Commands
 
 ```
-kanban add <title…> [--note <text>] [--lane <ref>] [--project <tag>] [--top]  # new card (Backlog by default; --top inserts first)
-kanban ls [lane] [--project <tag>] [--json]                           # board overview / one lane
-kanban show <id>                                                      # full detail incl. note
+kanban add <title…> [--note <text>] [--lane <ref>] [--project <tag>] [--parent <id>] [--top]  # new card (Backlog by default; --parent nests it)
+kanban ls [lane] [--project <tag>] [--json]                           # board overview / one lane (children indented)
+kanban show <id>                                                      # full detail incl. note, parent, subtasks
 kanban mv <id> <lane> [--pos <1-based>]                               # move / reorder
 kanban mv <id> --next | --prev                                        # advance / pull back one lane
-kanban edit <id> [--title <t>] [--note <text>] [--project <tag>] [--lane <ref>] [--clear-note]
+kanban edit <id> [--title <t>] [--note <text>] [--project <tag>] [--lane <ref>] [--parent <id>] [--clear-note] [--clear-parent]
 kanban done <id>                                                      # shortcut → Done
 kanban archive <id>                                                   # shortcut → Archive (undo: mv <id> <lane>)
-kanban rm <id>                                                        # delete card
+kanban rm <id> [--force]                                              # delete card (a parent needs --force; cascades)
 kanban lane ls | add <name> | rename <ref> <name> | rm <ref> [--force]  # manage lanes
 kanban serve [--port <n>] [--open]                                    # start web UI (default 127.0.0.1:4600)
 kanban help | version                                                 # CLI help / version
@@ -58,6 +58,14 @@ kanban help | version                                                 # CLI help
 - **`--project`**: tag cards with the repo name (`--project kanban`) so the
   board stays scannable across projects; filter with `kanban ls --project X`
   or the chips in the web UI.
+- **`--parent`**: nest a card under another (epic → story → subtask, max depth
+  3). `add --parent <id>` defaults the child to the parent's lane;
+  `edit --parent <id>` reparents, `edit --clear-parent` detaches. Each card
+  still moves through lanes **independently** — finishing a parent never
+  auto-finishes children, so advance subtasks as you complete them (`done` on
+  each). `rm` on a parent with children refuses without `--force`, which
+  deletes the whole subtree. The web UI nests same-lane children under the
+  parent card with a `2/3 ✓` progress badge; `show <id>` prints the tree.
 - **`--note`**: free text, rendered as GitHub-flavored markdown in the web UI —
   handy for acceptance-criteria checklists (`- [ ] …`), tables, code snippets,
   links. For multi-line notes from a shell, pass the text through a quoted
