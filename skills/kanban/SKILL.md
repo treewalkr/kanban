@@ -35,17 +35,18 @@ For every non-trivial unit of work:
 ## Commands
 
 ```
-kanban add <title…> [--note <text>] [--lane <ref>] [--project <tag>]   # new card (Backlog by default)
+kanban add <title…> [--note <text>] [--lane <ref>] [--project <tag>] [--top]  # new card (Backlog by default; --top inserts first)
 kanban ls [lane] [--project <tag>] [--json]                           # board overview / one lane
 kanban show <id>                                                      # full detail incl. note
 kanban mv <id> <lane> [--pos <1-based>]                               # move / reorder
 kanban mv <id> --next | --prev                                        # advance / pull back one lane
-kanban edit <id> [--title <t>] [--note <text>] [--project <tag>] [--clear-note]
+kanban edit <id> [--title <t>] [--note <text>] [--project <tag>] [--lane <ref>] [--clear-note]
 kanban done <id>                                                      # shortcut → Done
-kanban archive <id>                                                   # shortcut → Archive
+kanban archive <id>                                                   # shortcut → Archive (undo: mv <id> <lane>)
 kanban rm <id>                                                        # delete card
-kanban lane ls | add <name> | rename <ref> <name> | rm <ref>          # manage lanes
-kanban serve [--open]                                                 # start web UI at 127.0.0.1:4600
+kanban lane ls | add <name> | rename <ref> <name> | rm <ref> [--force]  # manage lanes
+kanban serve [--port <n>] [--open]                                    # start web UI (default 127.0.0.1:4600)
+kanban help | version                                                 # CLI help / version
 ```
 
 ## Conventions
@@ -58,7 +59,12 @@ kanban serve [--open]                                                 # start we
   board stays scannable across projects; filter with `kanban ls --project X`
   or the chips in the web UI.
 - **`--note`**: free text, rendered as GitHub-flavored markdown in the web UI —
-  handy for acceptance-criteria checklists (`- [ ] …`), code snippets, links.
+  handy for acceptance-criteria checklists (`- [ ] …`), tables, code snippets,
+  links. For multi-line notes from a shell, pass the text through a quoted
+  heredoc so backticks and quotes survive:
+  `n=$(cat <<'EOF' … EOF); kanban edit <id> --note "$n"`.
+- **`lane rm --force`** deletes the lane *and every card in it* — it does not
+  relocate them. Move cards out first unless you mean to drop them.
 - **`--json`**: append to any command for machine-readable output; on error the
   CLI exits 1 and prints `kanban: <message>` to stderr.
 - The web UI edits the same database and polls every few seconds, so CLI and
