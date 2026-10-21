@@ -45,11 +45,18 @@ export function listLanes(db: KanbanDb, laneRef?: string, project?: string): str
     if (tasks.length === 0) {
       out.push(c.dim("  (empty)"));
     } else {
-      for (const t of tasks) {
+      // children nest under a parent visible in the same lane
+      const visible = new Set(tasks.map((t) => t.id));
+      const emit = (t: Task, depth: number): void => {
         const chip = t.project ? c.dim(` [${t.project}]`) : "";
-        const titleWidth = Math.max(20, width - 10 - chip.length);
-        out.push(`  ${c.dim(t.id)}  ${truncate(t.title, titleWidth)}${chip}`);
-      }
+        const titleWidth = Math.max(20, width - 10 - chip.length - depth * 4);
+        const lead = depth === 0 ? "  " : `${"  ".repeat(depth)}└ `;
+        out.push(`${lead}${c.dim(t.id)}  ${truncate(t.title, titleWidth)}${chip}`);
+        for (const child of db.childrenOf(t.id)) {
+          if (visible.has(child.id)) emit(child, depth + 1);
+        }
+      };
+      tasks.filter((t) => !(t.parentId && visible.has(t.parentId))).forEach((t) => emit(t, 0));
     }
     out.push("");
   });
@@ -70,17 +77,33 @@ export function taskDetail(db: KanbanDb, task: Task): string {
   const lanes = db.lanes();
   const lane = lanes.find((l) => l.id === task.laneId);
   const color = laneColor(lanes.indexOf(lane!));
-  const out = [
-    c.bold(task.title),
-    `${c.dim("id:")}      ${task.id}`,
+  const out = [c.bold(task.title), `${c.dim("id:")}      ${task.id}`];
+  if (task.parentId) {
+    const parent = db.tasks().find((t) => t.id === task.parentId);
+    out.push(`${c.dim("parent:")}  ${parent ? `${c.dim(parent.id)}  ${parent.title}` : c.dim(task.parentId)}`);
+  }
+  out.push(
     `${c.dim("lane:")}    ${c.hex(color, lane?.name ?? task.laneId)}${lane ? c.dim(` (${lane.id})`) : ""}`,
     `${c.dim("project:")} ${task.project || c.dim("—")}`,
     `${c.dim("created:")} ${new Date(task.createdAt).toLocaleString()}`,
     `${c.dim("updated:")} ${new Date(task.updatedAt).toLocaleString()}`,
-  ];
+  );
   if (task.note) {
     out.push(c.dim("note:"));
     for (const line of task.note.split("\n")) out.push(`  ${line}`);
+  }
+  const children = db.childrenOf(task.id);
+  if (children.length > 0) {
+    out.push(c.dim("children:"));
+    const emit = (t: Task, depth: number): void => {
+      const cl = lanes.find((l) => l.id === t.laneId);
+      const cc = laneColor(lanes.indexOf(cl!));
+      out.push(
+        `${"  ".repeat(depth + 1)}${c.dim(t.id)}  ${truncate(t.title, 60)}  ${c.hex(cc, `→ ${cl?.name ?? t.laneId}`)}`,
+      );
+      db.childrenOf(t.id).forEach((gc) => emit(gc, depth + 1));
+    };
+    children.forEach((child) => emit(child, 0));
   }
   return out.join("\n");
 }

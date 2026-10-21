@@ -111,3 +111,45 @@ test("help and version exit 0", async () => {
   expect((await cli("help")).stdout).toContain("usage:");
   expect((await cli("version")).stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/);
 });
+
+test("hierarchy: add --parent, ls nesting, show tree, rm cascade", async () => {
+  const before = JSON.parse((await cli("ls", "--json")).stdout).length;
+
+  const epic = JSON.parse((await cli("add", "auth epic", "--lane", "plan", "--json")).stdout) as Task;
+  const story = JSON.parse((await cli("add", "oauth login", "--parent", epic.id, "--json")).stdout) as Task;
+  expect(story.parentId).toBe(epic.id);
+  expect(story.laneId).toBe("plan"); // inherits the parent's lane
+
+  const sub = JSON.parse((await cli("add", "provider config", "--parent", story.id, "--json")).stdout) as Task;
+  expect(sub.parentId).toBe(story.id);
+
+  const humanLs = await cli("ls", "plan");
+  expect(humanLs.stdout).toMatch(/└ \S+  oauth login/);
+  expect(humanLs.stdout).toMatch(/ {4}└ \S+  provider config/);
+
+  const show = await cli("show", story.id);
+  expect(show.stdout).toContain("parent:");
+  expect(show.stdout).toContain(epic.id);
+  expect(show.stdout).toContain("children:");
+  expect(show.stdout).toContain(sub.id);
+
+  const deep = await cli("add", "too deep", "--parent", sub.id);
+  expect(deep.code).toBe(1);
+  expect(deep.stderr).toContain("epic → story → subtask");
+
+  const guarded = await cli("rm", epic.id);
+  expect(guarded.code).toBe(1);
+  expect(guarded.stderr).toContain("descendant");
+
+  expect((await cli("rm", epic.id, "--force")).code).toBe(0);
+  expect(JSON.parse((await cli("ls", "--json")).stdout)).toHaveLength(before);
+});
+
+test("edit --parent reparents and --clear-parent detaches", async () => {
+  const a = JSON.parse((await cli("add", "anchor", "--json")).stdout) as Task;
+  const b = JSON.parse((await cli("add", "drifter", "--json")).stdout) as Task;
+  expect(JSON.parse((await cli("edit", b.id, "--parent", a.id, "--json")).stdout).parentId).toBe(a.id);
+  expect(JSON.parse((await cli("edit", b.id, "--clear-parent", "--json")).stdout).parentId).toBeNull();
+  await cli("rm", a.id);
+  await cli("rm", b.id);
+});

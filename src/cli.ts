@@ -8,28 +8,30 @@ const VERSION = "0.1.0";
 const HELP = `kanban ${VERSION} — task board for the pi agent
 
 usage:
-  kanban add <title…> [--note <text>] [--lane <ref>] [--project <tag>] [--top]
+  kanban add <title…> [--note <text>] [--lane <ref>] [--project <tag>] [--parent <id>] [--top]
   kanban ls [lane] [--project <tag>] [--json]
   kanban show <id>
   kanban mv <id> <lane> [--pos <1-based>]     kanban mv <id> --next | --prev
-  kanban edit <id> [--title <t>] [--note <text>] [--project <tag>] [--clear-note]
+  kanban edit <id> [--title <t>] [--note <text>] [--project <tag>] [--lane <ref>]
+                          [--parent <id>] [--clear-note] [--clear-parent]
   kanban done <id>
   kanban archive <id>                        (undo: mv <id> <lane>)
-  kanban rm <id>
+  kanban rm <id> [--force]                   (deleting a parent needs --force)
   kanban lane ls | add <name> | rename <ref> <name> | rm <ref> [--force]
   kanban serve [--port <n>] [--open]
   kanban help | version
 
 lane refs: slug (backlog), prefix (imp), name prefix (Rev), or ordinal (1..n)
-task ids: any unique prefix works. add --json for machine-readable output.`;
+task ids: any unique prefix works. add --json for machine-readable output.
+hierarchy: --parent nests a card (epic → story → subtask, max depth 3).`;
 
 interface Parsed {
   flags: Record<string, string | true>;
   positional: string[];
 }
 
-const VALUE_FLAGS = new Set(["note", "lane", "project", "pos", "title", "port"]);
-const BOOL_FLAGS = new Set(["json", "force", "next", "prev", "open", "top", "clear-note"]);
+const VALUE_FLAGS = new Set(["note", "lane", "project", "pos", "title", "port", "parent"]);
+const BOOL_FLAGS = new Set(["json", "force", "next", "prev", "open", "top", "clear-note", "clear-parent"]);
 
 function parse(argv: string[]): Parsed {
   const flags: Record<string, string | true> = {};
@@ -120,6 +122,7 @@ async function main(): Promise<number> {
           note: str(flags, "note"),
           lane: str(flags, "lane"),
           project,
+          parent: str(flags, "parent"),
           index: flags.top ? 0 : (str(flags, "pos") ? Number(str(flags, "pos")) - 1 : undefined),
         });
         if (json) jsonOut(task);
@@ -167,8 +170,13 @@ async function main(): Promise<number> {
         if (flags["clear-note"]) patch.note = "";
         if (project !== undefined) patch.project = project;
         if (str(flags, "lane") !== undefined) patch.lane = str(flags, "lane");
+        if (str(flags, "parent") !== undefined) patch.parent = str(flags, "parent");
+        if (flags["clear-parent"]) patch.parent = null;
         if (Object.keys(patch).length === 0) {
-          throw new KanbanError("nothing to edit — pass --title, --note, --project, --lane or --clear-note", "invalid");
+          throw new KanbanError(
+            "nothing to edit — pass --title, --note, --project, --lane, --parent or --clear-note/--clear-parent",
+            "invalid",
+          );
         }
         const updated = db.updateTask(id, patch);
         if (json) jsonOut(updated);
@@ -193,7 +201,7 @@ async function main(): Promise<number> {
       }
 
       case "rm": {
-        const task = db.deleteTask(positional[0] ?? "");
+        const task = db.deleteTask(positional[0] ?? "", !!flags.force);
         if (json) jsonOut({ ok: true, removed: task });
         else console.log(`removed  ${task.id}  ${task.title}`);
         return 0;
