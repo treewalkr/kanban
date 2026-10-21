@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { board } from "./lib/board.svelte";
+  import { eventsUrl } from "./api";
   import LaneView from "./lib/Lane.svelte";
   import TaskDetail from "./lib/TaskDetail.svelte";
   import TaskEditor from "./lib/TaskEditor.svelte";
@@ -14,14 +14,29 @@
     localStorage.setItem("kanban-theme", theme);
   }
 
-  onMount(() => board.refresh());
-
-  // keep the board in sync with CLI-side writes
+  // initial load, plus catch-up when a modal closes (change events are paused while editing)
   $effect(() => {
-    const t = setInterval(() => {
+    if (!board.editing) board.refresh();
+  });
+
+  // keep the board in sync with CLI-side and other-tab writes, pushed over SSE
+  $effect(() => {
+    const source = new EventSource(eventsUrl);
+    const refresh = () => {
       if (!document.hidden && !board.editing) board.refresh();
-    }, 3000);
-    return () => clearInterval(t);
+    };
+    let opened = false;
+    source.addEventListener("change", refresh);
+    source.addEventListener("open", () => {
+      // the server's initial sync event covers the first connect; catch up on reconnects
+      if (opened) refresh();
+      opened = true;
+    });
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      source.close();
+      document.removeEventListener("visibilitychange", refresh);
+    };
   });
 </script>
 
