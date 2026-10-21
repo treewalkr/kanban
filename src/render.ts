@@ -1,4 +1,5 @@
 import type { KanbanDb, Lane, Task } from "./db";
+import type { SearchResult } from "./search";
 
 const enabled = !!process.stdout.isTTY && !process.env.NO_COLOR;
 
@@ -70,6 +71,28 @@ export function taskLine(db: KanbanDb, task: Task): string {
   const color = laneColor(lanes.indexOf(lane!));
   const chip = task.project ? c.dim(` [${task.project}]`) : "";
   return `${c.green("✓")} ${c.dim(task.id)}  ${task.title}${chip}  ${c.hex(color, `→ ${lane?.name ?? task.laneId}`)}`;
+}
+
+/** Ranked search results, best first — title rows read like `ls`, checklists keep their box. */
+export function searchResults(db: KanbanDb, query: string, results: SearchResult[]): string {
+  if (results.length === 0) return c.dim(`no matches for '${query}'`);
+  const lanes = db.lanes();
+  const width = process.stdout.columns ?? 80;
+  const out: string[] = [c.dim(`${results.length} match${results.length === 1 ? "" : "es"} for '${query}'`)];
+  for (const r of results) {
+    const lane = lanes.find((l) => l.id === r.task.laneId);
+    const chip = r.task.project ? c.dim(` [${r.task.project}]`) : "";
+    const max = Math.max(20, width - 10 - chip.length);
+    const text =
+      r.kind === "checklist"
+        ? `${c.dim(r.checked ? "[x]" : "[ ]")} ${truncate(r.text, max - 4)}`
+        : r.kind === "note"
+          ? `${c.dim("note:")} ${truncate(r.text, max - 6)}`
+          : truncate(r.text, max);
+    const arrow = c.hex(laneColor(lanes.indexOf(lane!)), `→ ${lane?.name ?? r.task.laneId}`);
+    out.push(`  ${c.dim(r.task.id)}  ${text}${chip}  ${arrow}`);
+  }
+  return out.join("\n");
 }
 
 /** Full detail view of one task. */

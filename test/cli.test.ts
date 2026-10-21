@@ -153,3 +153,44 @@ test("edit --parent reparents and --clear-parent detaches", async () => {
   await cli("rm", a.id);
   await cli("rm", b.id);
 });
+
+test("search ranks titles, checklists and notes; --project scopes; empty query fails", async () => {
+  await cli(
+    "add", "flux capacitor search", "--project", "delorean",
+    "--note", "- [ ] calibrate the flux\nsee the plutonium sourcing doc",
+  );
+  await cli("add", "unrelated card", "--project", "other", "--note", "- [ ] calibrate the flux");
+
+  const titles = JSON.parse((await cli("search", "flux", "--json")).stdout) as Array<{
+    kind: string;
+    task: Task;
+  }>;
+  expect(titles[0]!.kind).toBe("title");
+  expect(titles[0]!.task.title).toBe("flux capacitor search");
+
+  // multi-word positional args join into one query
+  const checklists = JSON.parse((await cli("search", "calibrate", "the", "flux", "--json")).stdout) as Array<{
+    kind: string;
+    task: Task;
+  }>;
+  expect(checklists).toHaveLength(2);
+  expect(checklists.every((r) => r.kind === "checklist")).toBe(true);
+
+  const scoped = JSON.parse(
+    (await cli("search", "calibrate", "--project", "delorean", "--json")).stdout,
+  ) as Array<{ task: Task }>;
+  expect(scoped).toHaveLength(1);
+  expect(scoped[0]!.task.project).toBe("delorean");
+
+  const human = await cli("search", "plutonium");
+  expect(human.stdout).toContain("note:");
+  expect(human.stdout).toContain("plutonium");
+
+  const none = await cli("search", "no-such-thing");
+  expect(none.code).toBe(0);
+  expect(none.stdout).toContain("no matches");
+
+  const empty = await cli("search");
+  expect(empty.code).toBe(1);
+  expect(empty.stderr).toContain("usage: kanban search");
+});

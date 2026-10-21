@@ -37,6 +37,7 @@ bun run dev                    # hacking: api watch + vite dev server
 kanban add Fix login redirect --note "bounces to / after oauth" --project my-app
 kanban mv <id> plan            # or --next / --prev
 kanban ls [--project my-app] [--json]
+kanban search <query> [--project my-app]   # ranked: titles, checklist lines, notes
 kanban add Write e2e tests --parent <id>   # subtask — inherits the parent's lane
 kanban edit <id> --parent <id> · --clear-parent
 kanban show <id> · done <id> · archive <id> · edit <id> …

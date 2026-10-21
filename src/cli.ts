@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 import { join } from "node:path";
 import { KanbanDb, KanbanError, defaultDbPath, type Task, type TaskPatch } from "./db";
-import { laneList, listLanes, taskDetail, taskLine } from "./render";
+import { laneList, listLanes, searchResults, taskDetail, taskLine } from "./render";
+import { searchBoard } from "./search";
 
 const VERSION = "0.2.0";
 
@@ -10,6 +11,7 @@ const HELP = `kanban ${VERSION} — task board for the pi agent
 usage:
   kanban add <title…> [--note <text>] [--lane <ref>] [--project <tag>] [--parent <id>] [--top]
   kanban ls [lane] [--project <tag>] [--json]
+  kanban search <query…> [--project <tag>] [--json]
   kanban show <id>
   kanban mv <id> <lane> [--pos <1-based>]     kanban mv <id> --next | --prev
   kanban edit <id> [--title <t>] [--note <text>] [--project <tag>] [--lane <ref>]
@@ -23,6 +25,7 @@ usage:
 
 lane refs: slug (backlog), prefix (imp), name prefix (Rev), or ordinal (1..n)
 task ids: any unique prefix works. add --json for machine-readable output.
+search: ranks titles, checklist lines, then note text — same results as the web dropdown.
 hierarchy: --parent nests a card (epic → story → subtask, max depth 3).`;
 
 interface Parsed {
@@ -139,6 +142,18 @@ async function main(): Promise<number> {
           .filter((t) => (project ? t.project === project : true));
         if (json) jsonOut(tasks);
         else console.log(listLanes(db, laneRef, project));
+        return 0;
+      }
+
+      case "search": {
+        const query = positional.join(" ").trim();
+        if (!query) throw new KanbanError("usage: kanban search <query…> [--project <tag>]", "invalid");
+        const results = searchBoard(
+          db.tasks().filter((t) => (project ? t.project === project : true)),
+          query,
+        );
+        if (json) jsonOut(results);
+        else console.log(searchResults(db, query, results));
         return 0;
       }
 
