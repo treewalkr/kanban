@@ -5,6 +5,7 @@
   import TaskDetail from "./lib/TaskDetail.svelte";
   import TaskEditor from "./lib/TaskEditor.svelte";
   import AddLane from "./lib/AddLane.svelte";
+  import SearchBox from "./lib/SearchBox.svelte";
 
   let theme = $state(document.documentElement.dataset.theme === "light" ? "light" : "dark");
 
@@ -43,7 +44,7 @@
 <div class="app">
   <header class="top">
     <div class="brand"><span class="mark"></span>kanban</div>
-    <input class="search" type="search" placeholder="search…" bind:value={board.search} />
+    <SearchBox />
     <div class="chips">
       <button class:active={board.projectFilter === ""} onclick={() => (board.projectFilter = "")}>
         all

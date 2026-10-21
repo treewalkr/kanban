@@ -1,5 +1,6 @@
 import { api } from "../api";
 import type { Lane, LanePatch, Task, TaskPatch } from "../../../src/db";
+import { searchBoard } from "./search";
 
 type EdenError = { value?: unknown };
 
@@ -16,6 +17,8 @@ class BoardStore {
   dragging = $state<string | null>(null);
   dropHint = $state<{ laneId: string; index: number } | null>(null);
   expanded = $state<Set<string>>(new Set());
+  /** Card to scroll to and flash once the detail modal closes (search jumps). */
+  flashId = $state<string | null>(null);
 
   readonly projects = $derived(
     [...new Set(this.tasks.map((t) => t.project).filter((p) => p !== ""))].sort(),
@@ -27,6 +30,8 @@ class BoardStore {
   readonly archiveSearchHit = $derived(
     this.search.trim() !== "" && this.visibleTasks("archive").length > 0,
   );
+
+  readonly searchResults = $derived(searchBoard(this.tasks, this.search));
 
   openCard(task: Task): void {
     this.editing = task;
@@ -118,6 +123,17 @@ class BoardStore {
     const next = new Set(this.expanded);
     if (!next.delete(id)) next.add(id);
     this.expanded = next;
+  }
+
+  /** Jump from a search result: reveal the task on the board, then open it. */
+  jumpTo(task: Task): void {
+    const next = new Set(this.expanded);
+    for (const ancestor of this.ancestorsOf(task.id)) next.add(ancestor.id);
+    this.expanded = next;
+    if (task.laneId === "archive") this.archiveOpen = true;
+    this.flashId = task.id;
+    this.search = "";
+    this.openCard(task);
   }
 
   private fail(error: EdenError): void {
