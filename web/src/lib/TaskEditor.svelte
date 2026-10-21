@@ -44,7 +44,7 @@
     </label>
     <label>
       note
-      <textarea bind:value={note} rows="6" placeholder="details, links, acceptance criteria…"></textarea>
+      <textarea bind:value={note} rows="6" placeholder="details, links, acceptance criteria… (markdown ok)"></textarea>
     </label>
     <div class="row">
       <label>

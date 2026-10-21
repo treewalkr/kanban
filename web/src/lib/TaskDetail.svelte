@@ -1,5 +1,6 @@
 <script lang="ts">
   import { board } from "./board.svelte";
+  import { renderMarkdown } from "./markdown";
   import { laneColor, timeAgo } from "./util";
 
   const task = board.editing!;
@@ -36,7 +37,7 @@
     </div>
     <h2 class="detail-title">{task.title}</h2>
     {#if task.note}
-      <p class="detail-note">{task.note}</p>
+      <div class="detail-note md">{@html renderMarkdown(task.note)}</div>
     {:else}
       <p class="detail-note empty">no note</p>
     {/if}

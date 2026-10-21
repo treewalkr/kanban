@@ -38,6 +38,7 @@ kanban lane ls | add | rename | rm
 
 Task ids accept any unique prefix; lanes accept slug, prefix, name, or ordinal.
 `--json` everywhere for agent consumption; errors exit 1 with `kanban: <message>` on stderr.
+Notes render GitHub-flavored markdown in the web UI (lists, checkboxes, code, links).
 
 ### pi agent
 

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Task } from "../../../src/db";
   import { board } from "./board.svelte";
+  import { renderMarkdown } from "./markdown";
   import { timeAgo } from "./util";
 
   let { task }: { task: Task } = $props();
@@ -28,7 +29,7 @@
   }}
 >
   <div class="card-title">{task.title}</div>
-  {#if task.note}<p class="card-note">{task.note}</p>{/if}
+  {#if task.note}<div class="card-note md">{@html renderMarkdown(task.note)}</div>{/if}
   <div class="card-meta">
     <span class="id">{task.id}</span>
     {#if task.project}<span class="chip">{task.project}</span>{/if}

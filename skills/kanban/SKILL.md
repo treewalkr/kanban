@@ -57,6 +57,8 @@ kanban serve [--open]                                                 # start we
 - **`--project`**: tag cards with the repo name (`--project kanban`) so the
   board stays scannable across projects; filter with `kanban ls --project X`
   or the chips in the web UI.
+- **`--note`**: free text, rendered as GitHub-flavored markdown in the web UI —
+  handy for acceptance-criteria checklists (`- [ ] …`), code snippets, links.
 - **`--json`**: append to any command for machine-readable output; on error the
   CLI exits 1 and prints `kanban: <message>` to stderr.
 - The web UI edits the same database and polls every few seconds, so CLI and
