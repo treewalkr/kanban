@@ -136,3 +136,64 @@ test("board groups tasks by lane order", () => {
   const { tasks } = db.board();
   expect(tasks.map((t) => t.title)).toEqual(["b", "a"]);
 });
+
+test("createTask with a parent defaults to the parent's lane", () => {
+  const epic = db.createTask({ title: "epic", lane: "plan" });
+  const story = db.createTask({ title: "story", parent: epic.id });
+  expect(story.parentId).toBe(epic.id);
+  expect(story.laneId).toBe("plan");
+  expect(db.createTask({ title: "elsewhere", parent: epic.id, lane: "done" }).laneId).toBe("done");
+});
+
+test("hierarchy depth is capped at epic → story → subtask", () => {
+  const epic = db.createTask({ title: "epic" });
+  const story = db.createTask({ title: "story", parent: epic.id });
+  const sub = db.createTask({ title: "sub", parent: story.id });
+  expect(() => db.createTask({ title: "too deep", parent: sub.id })).toThrow(/epic → story → subtask/);
+  const otherStory = db.createTask({ title: "other story", parent: epic.id });
+  expect(() => db.updateTask(story.id, { parent: otherStory.id })).toThrow(/epic → story → subtask/);
+  const root = db.createTask({ title: "root" });
+  expect(db.updateTask(story.id, { parent: root.id }).parentId).toBe(root.id);
+});
+
+test("parenting rejects self and descendant cycles", () => {
+  const epic = db.createTask({ title: "epic" });
+  const story = db.createTask({ title: "story", parent: epic.id });
+  expect(() => db.updateTask(epic.id, { parent: epic.id })).toThrow(/own parent/);
+  expect(() => db.updateTask(epic.id, { parent: story.id })).toThrow(/descendant/);
+});
+
+test("updateTask sets and clears a parent", () => {
+  const a = db.createTask({ title: "a" });
+  const b = db.createTask({ title: "b" });
+  expect(db.updateTask(b.id, { parent: a.id }).parentId).toBe(a.id);
+  expect(db.updateTask(b.id, { parent: null }).parentId).toBeNull();
+});
+
+test("childrenOf returns direct children in position order", () => {
+  const epic = db.createTask({ title: "epic" });
+  const other = db.createTask({ title: "other" });
+  const a = db.createTask({ title: "a", parent: epic.id });
+  db.createTask({ title: "b", parent: epic.id });
+  db.createTask({ title: "grandchild", parent: a.id });
+  expect(db.childrenOf(epic.id).map((t) => t.title)).toEqual(["a", "b"]);
+  expect(db.childrenOf(a.id).map((t) => t.title)).toEqual(["grandchild"]);
+  expect(db.childrenOf(other.id)).toHaveLength(0);
+});
+
+test("deleteTask guards descendants and force cascades the subtree", () => {
+  const epic = db.createTask({ title: "epic" });
+  const story = db.createTask({ title: "story", parent: epic.id, lane: "plan" });
+  db.createTask({ title: "sub", parent: story.id });
+  expect(() => db.deleteTask(epic.id)).toThrow(/descendant/);
+  db.deleteTask(epic.id, true);
+  expect(db.tasks()).toHaveLength(0);
+});
+
+test("deleteLane force removes descendants living in other lanes", () => {
+  const story = db.createTask({ title: "story", lane: "plan" });
+  db.createTask({ title: "sub", parent: story.id, lane: "done" });
+  db.deleteLane("plan", true);
+  expect(db.tasks().every((t) => t.parentId === null)).toBe(true);
+  expect(db.tasks().some((t) => t.title === "sub")).toBe(false);
+});

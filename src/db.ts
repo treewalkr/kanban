@@ -33,6 +33,7 @@ export interface TaskPatch {
   note?: string;
   project?: string;
   lane?: string; // lane ref: id, id prefix, name prefix, or 1-based ordinal
+  parent?: string | null; // task ref to attach under; null detaches
   index?: number; // 0-based position within the target lane; omit to append
 }
 
@@ -214,6 +215,12 @@ export class KanbanDb {
     return row.n;
   }
 
+  childrenOf(taskId: string): Task[] {
+    return (
+      this.q("SELECT * FROM tasks WHERE parent_id = ? ORDER BY position, created_at").all(taskId) as TaskRow[]
+    ).map(rowToTask);
+  }
+
   // ---------- resolution ----------
 
   resolveLane(ref: string): Lane {
@@ -251,10 +258,11 @@ export class KanbanDb {
 
   // ---------- task writes ----------
 
-  createTask(input: { title: string; note?: string; lane?: string; project?: string; index?: number }): Task {
+  createTask(input: { title: string; note?: string; lane?: string; project?: string; parent?: string; index?: number }): Task {
     const title = input.title.trim();
     if (!title) throw new KanbanError("title must not be empty", "invalid");
-    const lane = input.lane ? this.resolveLane(input.lane) : this.lanes()[0];
+    const parent = this.resolveParent(null, input.parent);
+    const lane = input.lane ? this.resolveLane(input.lane) : parent ? this.resolveLane(parent.laneId) : this.lanes()[0];
     if (!lane) throw new KanbanError("board has no lanes", "invalid");
     const now = Date.now();
     const position = this.insertPosition(lane.id, input.index, null);
@@ -262,8 +270,8 @@ export class KanbanDb {
       const id = newId();
       try {
         this.q(
-          "INSERT INTO tasks (id, title, note, lane_id, project, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        ).run(id, title, input.note ?? "", lane.id, input.project ?? "", position, now, now);
+          "INSERT INTO tasks (id, title, note, lane_id, project, parent_id, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ).run(id, title, input.note ?? "", lane.id, input.project ?? "", parent?.id ?? null, position, now, now);
         this.renormalizeIfTight(lane.id);
         return this.resolveTask(id);
       } catch (err) {
@@ -278,19 +286,22 @@ export class KanbanDb {
     const laneId = patch.lane ? this.resolveLane(patch.lane).id : task.laneId;
     const hasIndex = patch.index !== undefined;
     const position = patch.lane || hasIndex ? this.insertPosition(laneId, patch.index, task.id) : task.position;
+    const parentId =
+      patch.parent === undefined ? task.parentId : (this.resolveParent(task.id, patch.parent)?.id ?? null);
 
     const title = patch.title?.trim();
     if (patch.title !== undefined && !title) throw new KanbanError("title must not be empty", "invalid");
 
     this.q(
       `UPDATE tasks SET
-        title = ?, note = ?, lane_id = ?, project = ?, position = ?, updated_at = ?
+        title = ?, note = ?, lane_id = ?, project = ?, parent_id = ?, position = ?, updated_at = ?
       WHERE id = ?`,
     ).run(
       title ?? task.title,
       patch.note ?? task.note,
       laneId,
       patch.project ?? task.project,
+      parentId,
       position,
       Date.now(),
       task.id,
@@ -303,10 +314,72 @@ export class KanbanDb {
     return this.updateTask(prefix, { lane: laneRef, index });
   }
 
-  deleteTask(prefix: string): Task {
+  deleteTask(prefix: string, force = false): Task {
     const task = this.resolveTask(prefix);
-    this.q("DELETE FROM tasks WHERE id = ?").run(task.id);
+    const ids = this.descendantIds(task.id);
+    if (ids.length > 0 && !force) {
+      throw new KanbanError(`task '${task.id}' has ${ids.length} descendant(s); pass force to delete them too`, "conflict");
+    }
+    const del = this.q("DELETE FROM tasks WHERE id = ?");
+    del.run(task.id);
+    ids.forEach((id) => del.run(id));
     return task;
+  }
+
+  // ---------- hierarchy ----------
+
+  /**
+   * Resolve and validate a parent for `taskId` (null for a fresh task); returns the
+   * parent task, or null to detach. Enforces epic → story → subtask via
+   * depth(parent) + 1 + subtreeHeight(task) ≤ 2, which also rejects self/cycle links.
+   */
+  private resolveParent(taskId: string | null, ref: string | null | undefined): Task | null {
+    if (ref === null || ref === undefined || ref === "") return null;
+    const parent = this.resolveTask(ref);
+    if (taskId && parent.id === taskId) throw new KanbanError("a task cannot be its own parent", "invalid");
+    const parentDepth = this.ancestorDepth(parent.id, taskId ?? undefined);
+    const height = taskId ? this.subtreeHeight(taskId) : 0;
+    if (parentDepth + 1 + height > 2) {
+      throw new KanbanError("hierarchy is limited to epic → story → subtask", "invalid");
+    }
+    return parent;
+  }
+
+  /** Depth of `taskId` below its root; throws if `stopAt` shows up (would cycle). */
+  private ancestorDepth(taskId: string, stopAt?: string): number {
+    const seen = new Set<string>([taskId]);
+    const parentOf = this.q("SELECT parent_id AS p FROM tasks WHERE id = ?");
+    let depth = 0;
+    let cur: string | null = taskId;
+    for (;;) {
+      const row = cur ? (parentOf.get(cur) as { p: string | null } | null) : null;
+      const next: string | null = row?.p ?? null;
+      if (next === null) return depth;
+      if (stopAt && next === stopAt) throw new KanbanError("cannot attach a task under its own descendant", "invalid");
+      if (!seen.add(next)) throw new KanbanError(`parent cycle detected at '${next}'`, "conflict");
+      depth++;
+      cur = next;
+    }
+  }
+
+  /** Longest chain below `taskId` (0 = leaf). */
+  private subtreeHeight(taskId: string): number {
+    const children = this.childrenOf(taskId);
+    if (children.length === 0) return 0;
+    return 1 + Math.max(...children.map((c) => this.subtreeHeight(c.id)));
+  }
+
+  /** All descendant ids of a task (children, grandchildren, …), breadth-first. */
+  private descendantIds(taskId: string): string[] {
+    const out: string[] = [];
+    const queue = [taskId];
+    while (queue.length > 0) {
+      for (const child of this.childrenOf(queue.shift()!)) {
+        out.push(child.id);
+        queue.push(child.id);
+      }
+    }
+    return out;
   }
 
   // ---------- lane writes ----------
@@ -370,7 +443,11 @@ export class KanbanDb {
     const count = this.taskCount(lane.id);
     if (count > 0) {
       if (!force) throw new KanbanError(`lane '${lane.id}' still holds ${count} task(s); pass force to delete them too`, "conflict");
-      this.q("DELETE FROM tasks WHERE lane_id = ?").run(lane.id);
+      // delete whole subtrees so no task elsewhere keeps a dangling parent
+      const del = this.q("DELETE FROM tasks WHERE id = ?");
+      for (const t of this.laneTasks(lane.id)) {
+        [t.id, ...this.descendantIds(t.id)].forEach((id) => del.run(id));
+      }
     }
     this.q("DELETE FROM lanes WHERE id = ?").run(lane.id);
     return lane;
