@@ -75,9 +75,10 @@ kanban help | version                                                 # CLI help
   relocate them. Move cards out first unless you mean to drop them.
 - **`--json`**: append to any command for machine-readable output; on error the
   CLI exits 1 and prints `kanban: <message>` to stderr.
-- The web UI edits the same database and polls every few seconds, so CLI and
-  browser changes stay in sync automatically. Clicking a card opens a detail
-  view (full note, timestamps, quick done/archive actions) with an edit mode.
+- The web UI edits the same database and receives pushed updates (SSE), so
+  CLI and browser changes stay in sync automatically. Clicking a card opens a
+  detail view (full note, timestamps, quick done/archive actions) with an edit
+  mode.
   Archive shows as a collapsed strip at the end of the board — click to expand,
   or drag a card onto it to archive.
 - First run of a command creates `data/kanban.db` in the app repo and seeds the

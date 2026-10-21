@@ -54,8 +54,8 @@ links).
 
 The skill in `skills/kanban/SKILL.md` (installed to `~/.pi/agent/skills/kanban/` by
 `scripts/install.sh`) teaches pi the workflow contract: card per unit of work, advance it
-through lanes, never leave stale cards. The CLI writes the DB directly; the web UI polls and
-picks up CLI changes within a few seconds.
+through lanes, never leave stale cards. The CLI writes the DB directly; the server watches the
+database and pushes changes to the web UI over SSE, so the board updates live.
 
 ## Scripts
 
