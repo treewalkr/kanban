@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { KanbanDb, KanbanError, defaultDbPath, type Task, type TaskPatch } from "./db";
 import { laneList, listLanes, taskDetail, taskLine } from "./render";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 const HELP = `kanban ${VERSION} — task board for the pi agent
 
