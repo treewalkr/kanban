@@ -37,6 +37,7 @@ For every non-trivial unit of work:
 ```
 kanban add <title…> [--note <text>] [--lane <ref>] [--project <tag>] [--parent <id>] [--top]  # new card (Backlog by default; --parent nests it)
 kanban ls [lane] [--project <tag>] [--json]                           # board overview / one lane (children indented)
+kanban search <query…> [--project <tag>] [--json]                     # ranked matches: titles, checklist lines, notes
 kanban show <id>                                                      # full detail incl. note, parent, subtasks
 kanban mv <id> <lane> [--pos <1-based>]                               # move / reorder
 kanban mv <id> --next | --prev                                        # advance / pull back one lane
