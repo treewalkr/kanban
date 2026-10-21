@@ -1,11 +1,16 @@
 # kanban
 
 A local-first Kanban board for the [pi](https://github.com/badlogic/pi-mono) coding agent to
-track and manage task state — one SQLite file, a web UI for humans, and a CLI for agents.
+track task state — one SQLite file, a web UI for humans, and a CLI for agents.
 
 Lanes default to the working workflow — **Backlog → Plan → Test + Implement → Review → Done →
 Archive** — and are customizable. Archive keeps finished cards out of the way: a collapsed strip
 on the board (click to expand, drag onto it to archive), `kanban archive <id>` from the CLI.
+
+Cards nest into an **epic → story → subtask** hierarchy (max depth 3). Same-lane children render
+collapsed under their parent with a `2/3 ✓` progress badge; a child in another lane renders as a
+normal card linked to its parent. Every card still moves through lanes independently — finishing
+a parent never finishes its children.
 
 ## Stack
 
@@ -32,13 +37,18 @@ bun run dev                    # hacking: api watch + vite dev server
 kanban add Fix login redirect --note "bounces to / after oauth" --project my-app
 kanban mv <id> plan            # or --next / --prev
 kanban ls [--project my-app] [--json]
-kanban show <id> · edit <id> … · done <id> · archive <id> · rm <id>
+kanban add Write e2e tests --parent <id>   # subtask — inherits the parent's lane
+kanban edit <id> --parent <id> · --clear-parent
+kanban show <id> · done <id> · archive <id> · edit <id> …
+kanban rm <id> --force         # deleting a parent cascades its subtree
 kanban lane ls | add | rename | rm
 ```
 
 Task ids accept any unique prefix; lanes accept slug, prefix, name, or ordinal.
 `--json` everywhere for agent consumption; errors exit 1 with `kanban: <message>` on stderr.
-Notes render GitHub-flavored markdown in the web UI (lists, checkboxes, code, links).
+`ls` indents same-lane children under their parent; `show` prints the full tree with each
+child's lane. Notes render GitHub-flavored markdown in the web UI (lists, checkboxes, code,
+links).
 
 ### pi agent
 
@@ -62,7 +72,8 @@ picks up CLI changes within a few seconds.
 ```
 src/    db.ts (sqlite + queries) · app.ts (elysia, type App) · index.ts (server)
         cli.ts + render.ts (kanban CLI)
-web/    Svelte 5 SPA: board, cards, drag & drop, card detail view, editor, filters
+web/    Svelte 5 SPA: board with nested subtask cards, drag & drop, card detail
+        view, editor, filters
 skills/kanban/SKILL.md   pi skill (source of truth)
 data/kanban.db           your board (gitignored; KANBAN_DB overrides, used by tests)
 ```
