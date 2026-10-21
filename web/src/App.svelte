@@ -60,11 +60,14 @@
   {/if}
 
   {#if board.editing}
-    {#if board.editMode}
-      <TaskEditor />
-    {:else}
-      <TaskDetail />
-    {/if}
+    <!-- keyed: navigating parent ↔ child inside the modal must remount it with fresh state -->
+    {#key board.editing.id}
+      {#if board.editMode}
+        <TaskEditor />
+      {:else}
+        <TaskDetail />
+      {/if}
+    {/key}
   {/if}
 
   {#if board.error}
