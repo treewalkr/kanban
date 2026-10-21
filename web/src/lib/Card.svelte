@@ -1,22 +1,35 @@
 <script lang="ts">
   import type { Task } from "../../../src/db";
   import { board } from "./board.svelte";
+  import CardView from "./Card.svelte";
   import { renderMarkdown } from "./markdown";
   import { timeAgo } from "./util";
 
-  let { task }: { task: Task } = $props();
+  let { task, child = false }: { task: Task; child?: boolean } = $props();
+
+  let nested = $derived(board.nestedChildren(task));
+  let progress = $derived(board.progressOf(task));
+  let open = $derived(board.expanded.has(task.id));
+  let parent = $derived(task.parentId ? board.taskById(task.parentId) : undefined);
+  let parentChip = $derived(!!parent && !board.nestsUnder(task));
+
+  function openDetail(e: Event): void {
+    e.stopPropagation();
+    board.openCard(task);
+  }
 </script>
 
 <div
   class="card"
+  class:child
   class:dragging={board.dragging === task.id}
   draggable="true"
   data-card={task.id}
   role="button"
   tabindex="0"
-  onclick={() => board.openCard(task)}
+  onclick={openDetail}
   onkeydown={(e) => {
-    if (e.key === "Enter") board.openCard(task);
+    if (e.key === "Enter") openDetail(e);
   }}
   ondragstart={(e) => {
     e.dataTransfer!.setData("text/plain", task.id);
@@ -28,11 +41,50 @@
     board.dropHint = null;
   }}
 >
-  <div class="card-title">{task.title}</div>
+  {#if parentChip && parent}
+    <button
+      class="parent-chip"
+      title="open parent card"
+      onclick={(e) => {
+        e.stopPropagation();
+        board.openCard(parent);
+      }}
+    >
+      ↑ {parent.title}
+    </button>
+  {/if}
+  <div class="card-title">
+    {#if nested.length > 0}
+      <button
+        class="disclosure"
+        title={open ? "collapse subtasks" : "expand subtasks"}
+        aria-expanded={open}
+        onclick={(e) => {
+          e.stopPropagation();
+          board.toggleExpanded(task.id);
+        }}
+      >
+        {open ? "▾" : "▸"}
+      </button>
+    {/if}
+    {task.title}
+    {#if progress.total > 0}
+      <span class="progress" class:complete={progress.done === progress.total}>
+        {progress.done}/{progress.total} ✓
+      </span>
+    {/if}
+  </div>
   {#if task.note}<div class="card-note md">{@html renderMarkdown(task.note)}</div>{/if}
   <div class="card-meta">
     <span class="id">{task.id}</span>
     {#if task.project}<span class="chip">{task.project}</span>{/if}
     <span class="age" title={new Date(task.updatedAt).toLocaleString()}>{timeAgo(task.updatedAt)}</span>
   </div>
+  {#if open && nested.length > 0}
+    <div class="card-children" role="group" aria-label="subtasks of {task.title}">
+      {#each nested as sub (sub.id)}
+        <CardView task={sub} child />
+      {/each}
+    </div>
+  {/if}
 </div>

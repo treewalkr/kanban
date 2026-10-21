@@ -482,6 +482,80 @@ button:focus-visible {
   background: var(--accent);
 }
 
+/* task hierarchy (epic → story → subtask) */
+
+.card.child {
+  padding: 6px 9px;
+  border-left: 2px solid var(--accent);
+}
+
+.card.child .card-title {
+  font-size: 12.5px;
+}
+
+.card-children {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.disclosure {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1;
+  padding: 1px 3px;
+  margin-right: 2px;
+  cursor: pointer;
+}
+
+.disclosure:hover {
+  color: var(--text);
+}
+
+.progress {
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.progress.complete {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  color: var(--accent);
+}
+
+.parent-chip {
+  display: inline-block;
+  max-width: 100%;
+  margin-bottom: 5px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.parent-chip:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--border) 55%, var(--text-muted));
+}
+
 /* collapsed archive strip */
 
 .lane.collapsed {

@@ -15,6 +15,7 @@ class BoardStore {
   archiveOpen = $state(false);
   dragging = $state<string | null>(null);
   dropHint = $state<{ laneId: string; index: number } | null>(null);
+  expanded = $state<Set<string>>(new Set());
 
   readonly projects = $derived(
     [...new Set(this.tasks.map((t) => t.project).filter((p) => p !== ""))].sort(),
@@ -38,18 +39,72 @@ class BoardStore {
   }
 
   visibleTasks(laneId: string): Task[] {
-    const q = this.search.trim().toLowerCase();
     return this.tasks
       .filter((t) => t.laneId === laneId)
-      .filter((t) => (this.projectFilter ? t.project === this.projectFilter : true))
-      .filter((t) =>
-        q ? `${t.title} ${t.note} ${t.id} ${t.project}`.toLowerCase().includes(q) : true,
-      )
+      .filter((t) => this.matches(t))
+      .filter((t) => !this.nestsUnder(t))
       .sort((a, b) => a.position - b.position);
   }
 
   laneCount(laneId: string): number {
     return this.tasks.filter((t) => t.laneId === laneId).length;
+  }
+
+  // ---------- hierarchy ----------
+
+  taskById(id: string): Task | undefined {
+    return this.tasks.find((t) => t.id === id);
+  }
+
+  /** True when the task passes the current search/project filter. */
+  matches(t: Task): boolean {
+    if (this.projectFilter && t.project !== this.projectFilter) return false;
+    const q = this.search.trim().toLowerCase();
+    return q ? `${t.title} ${t.note} ${t.id} ${t.project}`.toLowerCase().includes(q) : true;
+  }
+
+  /** True when the task renders nested under its parent (same lane, parent visible). */
+  nestsUnder(task: Task): boolean {
+    if (!task.parentId) return false;
+    const parent = this.taskById(task.parentId);
+    return !!parent && parent.laneId === task.laneId && this.matches(parent);
+  }
+
+  /** Direct children in position order, any lane. */
+  childrenOf(id: string): Task[] {
+    return this.tasks
+      .filter((t) => t.parentId === id)
+      .sort((a, b) => a.position - b.position || a.createdAt - b.createdAt);
+  }
+
+  /** All descendants of a task, breadth-first. */
+  descendantsOf(id: string): Task[] {
+    const out: Task[] = [];
+    const walk = (tid: string): void => {
+      for (const child of this.childrenOf(tid)) {
+        out.push(child);
+        walk(child.id);
+      }
+    };
+    walk(id);
+    return out;
+  }
+
+  /** Same-lane children that pass the current filter — the ones nested on the board. */
+  nestedChildren(task: Task): Task[] {
+    return this.childrenOf(task.id).filter((t) => t.laneId === task.laneId && this.matches(t));
+  }
+
+  /** Done/total over all descendants, any lane. */
+  progressOf(task: Task): { done: number; total: number } {
+    const all = this.descendantsOf(task.id);
+    return { done: all.filter((t) => t.laneId === "done").length, total: all.length };
+  }
+
+  toggleExpanded(id: string): void {
+    const next = new Set(this.expanded);
+    if (!next.delete(id)) next.add(id);
+    this.expanded = next;
   }
 
   private fail(error: EdenError): void {
@@ -69,8 +124,8 @@ class BoardStore {
     this.loading = false;
   }
 
-  async addTask(laneId: string, title: string, project = this.projectFilter): Promise<void> {
-    const { error } = await api.tasks.post({ title, lane: laneId, project: project || undefined });
+  async addTask(laneId: string, title: string, project = this.projectFilter, parentId?: string): Promise<void> {
+    const { error } = await api.tasks.post({ title, lane: laneId, project: project || undefined, parent: parentId });
     if (error) return this.fail(error);
     await this.refresh();
   }
@@ -85,8 +140,8 @@ class BoardStore {
     await this.updateTask(id, { lane: laneId, index });
   }
 
-  async deleteTask(id: string): Promise<void> {
-    const { error } = await api.tasks({ id }).delete();
+  async deleteTask(id: string, force = false): Promise<void> {
+    const { error } = await api.tasks({ id }).delete(null, { query: force ? { force: "true" } : undefined });
     if (error) return this.fail(error);
     this.closeCard();
     await this.refresh();

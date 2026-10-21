@@ -258,7 +258,7 @@ export class KanbanDb {
 
   // ---------- task writes ----------
 
-  createTask(input: { title: string; note?: string; lane?: string; project?: string; parent?: string; index?: number }): Task {
+  createTask(input: { title: string; note?: string; lane?: string; project?: string; parent?: string | null; index?: number }): Task {
     const title = input.title.trim();
     if (!title) throw new KanbanError("title must not be empty", "invalid");
     const parent = this.resolveParent(null, input.parent);
@@ -352,8 +352,7 @@ export class KanbanDb {
     let depth = 0;
     let cur: string | null = taskId;
     for (;;) {
-      const row = cur ? (parentOf.get(cur) as { p: string | null } | null) : null;
-      const next: string | null = row?.p ?? null;
+      const next: string | null = cur ? ((parentOf.get(cur) as { p: string | null } | null)?.p ?? null) : null;
       if (next === null) return depth;
       if (stopAt && next === stopAt) throw new KanbanError("cannot attach a task under its own descendant", "invalid");
       if (!seen.add(next)) throw new KanbanError(`parent cycle detected at '${next}'`, "conflict");
