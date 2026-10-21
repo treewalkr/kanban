@@ -197,3 +197,29 @@ test("deleteLane force removes descendants living in other lanes", () => {
   expect(db.tasks().every((t) => t.parentId === null)).toBe(true);
   expect(db.tasks().some((t) => t.title === "sub")).toBe(false);
 });
+
+test("watch fires on writes from another connection and stops on unsubscribe", async () => {
+  const waitFor = async (ok: () => boolean, ms = 2000) => {
+    const deadline = Date.now() + ms;
+    while (!ok()) {
+      if (Date.now() > deadline) throw new Error("waitFor timed out");
+      await Bun.sleep(5);
+    }
+  };
+
+  let hits = 0;
+  const stop = db.watch(() => hits++, 10);
+
+  const writer = new KanbanDb(join(dir, "t.db")); // a second connection, like the CLI
+  writer.createTask({ title: "external write" });
+  writer.close();
+  await waitFor(() => hits >= 1);
+
+  stop();
+  const after = hits;
+  const writer2 = new KanbanDb(join(dir, "t.db"));
+  writer2.createTask({ title: "after stop" });
+  writer2.close();
+  await Bun.sleep(100);
+  expect(hits).toBe(after);
+});

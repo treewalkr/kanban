@@ -144,6 +144,24 @@ export class KanbanDb {
     this.db.close();
   }
 
+  /**
+   * Fire `cb` when another process writes the DB — PRAGMA data_version only
+   * changes on commits from other connections, so same-connection writes
+   * (the API's own routes) don't fire it. Returns a stopper.
+   */
+  watch(cb: () => void, intervalMs = 300): () => void {
+    let version = (this.q("PRAGMA data_version").get() as { data_version: number }).data_version;
+    const timer = setInterval(() => {
+      const current = (this.q("PRAGMA data_version").get() as { data_version: number }).data_version;
+      if (current !== version) {
+        version = current;
+        cb();
+      }
+    }, intervalMs);
+    timer.unref();
+    return () => clearInterval(timer);
+  }
+
   private q(sql: string): ReturnType<Database["prepare"]> {
     let s = this.stmts.get(sql);
     if (!s) {
