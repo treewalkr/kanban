@@ -86,3 +86,46 @@ test("/board carries the latest plan per card", async () => {
   const board = (await res.json()) as { plans: Record<string, { content: string; version: number }> };
   expect(board.plans[task.id]).toMatchObject({ content: "v2", version: 2 });
 });
+
+test("GET/POST /tasks/:id/comments thread a card; unknown task 404s, bad body 4xx", async () => {
+  const app = createApp(db);
+  const task = db.createTask({ title: "one" });
+
+  const empty = await app.handle(new Request(`http://localhost/tasks/${task.id}/comments`));
+  expect(empty.status).toBe(200);
+  expect(await empty.json()).toEqual([]);
+
+  const post = await app.handle(
+    new Request(`http://localhost/tasks/${task.id}/comments`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ body: "picked this up", author: "pi-builder" }),
+    }),
+  );
+  expect(post.status).toBe(201);
+  expect(await post.json()).toMatchObject({ author: "pi-builder", kind: "comment", body: "picked this up" });
+
+  const got = await app.handle(new Request(`http://localhost/tasks/${task.id}/comments`));
+  expect(await got.json()).toHaveLength(1);
+
+  const noTask = await app.handle(new Request("http://localhost/tasks/zzzzz/comments"));
+  expect(noTask.status).toBe(404);
+
+  const blank = await app.handle(
+    new Request(`http://localhost/tasks/${task.id}/comments`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ body: "" }),
+    }),
+  );
+  expect(blank.status).toBe(422);
+
+  const badKind = await app.handle(
+    new Request(`http://localhost/tasks/${task.id}/comments`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ body: "x", kind: "shout" }),
+    }),
+  );
+  expect(badKind.status).toBe(422);
+});

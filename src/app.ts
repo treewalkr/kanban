@@ -1,6 +1,6 @@
 import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
-import { KanbanDb, KanbanError, defaultDbPath, type Attachment, type Board, type Lane, type Task } from "./db";
+import { KanbanDb, KanbanError, defaultDbPath, type Attachment, type Board, type Comment, type Lane, type Task } from "./db";
 
 const errorStatus = { "not-found": 404, conflict: 409, invalid: 400 } as const;
 
@@ -111,6 +111,37 @@ export const createApp = (db: KanbanDb) => {
         }
       },
       { params: t.Object({ id: t.String() }) },
+    )
+    .get(
+      "/tasks/:id/comments",
+      ({ params, status }): Comment[] | unknown => {
+        try {
+          return db.comments(params.id);
+        } catch (e) {
+          return fail(e, status);
+        }
+      },
+      { params: t.Object({ id: t.String() }) },
+    )
+    .post(
+      "/tasks/:id/comments",
+      ({ params, body, status }): Comment | unknown => {
+        try {
+          return status(201, db.createComment(params.id, body));
+        } catch (e) {
+          return fail(e, status);
+        }
+      },
+      {
+        params: t.Object({ id: t.String() }),
+        body: t.Object({
+          body: t.String({ minLength: 1 }),
+          author: t.Optional(t.String()),
+          kind: t.Optional(
+            t.Union([t.Literal("comment"), t.Literal("review"), t.Literal("handoff")]),
+          ),
+        }),
+      },
     )
     .post(
       "/tasks",
