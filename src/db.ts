@@ -33,6 +33,17 @@ export interface Attachment {
   createdAt: number;
 }
 
+export type CommentKind = "comment" | "review" | "handoff";
+
+export interface Comment {
+  id: string;
+  taskId: string;
+  author: string;
+  kind: CommentKind;
+  body: string;
+  createdAt: number;
+}
+
 export interface Board {
   lanes: Lane[];
   tasks: Task[];
@@ -68,6 +79,8 @@ export class KanbanError extends Error {
 const GAP = 100;
 const MIN_GAP = 0.01;
 
+const COMMENT_KINDS: ReadonlySet<string> = new Set(["comment", "review", "handoff"]);
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS lanes (
   id TEXT PRIMARY KEY,
@@ -99,6 +112,15 @@ CREATE TABLE IF NOT EXISTS attachments (
   created_at INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS attachments_card_kind_version ON attachments (card_id, kind, version);
+CREATE TABLE IF NOT EXISTS comments (
+  id TEXT PRIMARY KEY,
+  card_id TEXT NOT NULL REFERENCES tasks (id),
+  author TEXT NOT NULL DEFAULT 'user',
+  kind TEXT NOT NULL DEFAULT 'comment',
+  body TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS comments_card ON comments (card_id, created_at);
 `;
 
 export const DEFAULT_LANES: Array<Omit<Lane, "position">> = [
@@ -144,6 +166,15 @@ interface AttachmentRow {
   created_at: number;
 }
 
+interface CommentRow {
+  id: string;
+  card_id: string;
+  author: string;
+  kind: string;
+  body: string;
+  created_at: number;
+}
+
 const rowToLane = (r: LaneRow): Lane => ({ ...r });
 const rowToTask = (r: TaskRow): Task => ({
   id: r.id,
@@ -164,6 +195,15 @@ const rowToAttachment = (r: AttachmentRow): Attachment => ({
   version: r.version,
   content: r.content,
   source: r.source,
+  createdAt: r.created_at,
+});
+
+const rowToComment = (r: CommentRow): Comment => ({
+  id: r.id,
+  taskId: r.card_id,
+  author: r.author,
+  kind: r.kind as CommentKind,
+  body: r.body,
   createdAt: r.created_at,
 });
 
@@ -396,9 +436,11 @@ export class KanbanDb {
     }
     const del = this.q("DELETE FROM tasks WHERE id = ?");
     const delAttachments = this.q("DELETE FROM attachments WHERE card_id = ?");
+    const delComments = this.q("DELETE FROM comments WHERE card_id = ?");
     for (const id of [task.id, ...ids]) {
       del.run(id);
       delAttachments.run(id);
+      delComments.run(id);
     }
     return task;
   }
@@ -507,6 +549,45 @@ export class KanbanDb {
     return Object.fromEntries(rows.map((r) => [r.card_id, rowToAttachment(r)]));
   }
 
+  // ---------- comments ----------
+
+  /** Append to a card's thread; kind and author are normalized here so every writer agrees. */
+  createComment(taskRef: string, input: { author?: string; kind?: string; body: string }): Comment {
+    const task = this.resolveTask(taskRef);
+    const body = input.body.trim();
+    if (!body) throw new KanbanError("comment body must not be empty", "invalid");
+    const kind = input.kind ?? "comment";
+    if (!COMMENT_KINDS.has(kind)) {
+      throw new KanbanError(`unknown comment kind '${kind}' (comment | review | handoff)`, "invalid");
+    }
+    const author = input.author?.trim() || "user";
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const id = newId();
+      try {
+        this.q("INSERT INTO comments (id, card_id, author, kind, body, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(
+          id,
+          task.id,
+          author,
+          kind,
+          body,
+          Date.now(),
+        );
+        return rowToComment(this.q("SELECT * FROM comments WHERE id = ?").get(id) as CommentRow);
+      } catch (err) {
+        if (!(err instanceof Error && err.message.includes("UNIQUE"))) throw err;
+      }
+    }
+    throw new KanbanError("could not generate a unique id", "conflict");
+  }
+
+  /** A card's thread, oldest first (rowid keeps same-millisecond posts in order). */
+  comments(taskRef: string): Comment[] {
+    const task = this.resolveTask(taskRef);
+    return (
+      this.q("SELECT * FROM comments WHERE card_id = ? ORDER BY created_at, rowid").all(task.id) as CommentRow[]
+    ).map(rowToComment);
+  }
+
   // ---------- lane writes ----------
 
   createLane(input: { name: string; description?: string; index?: number }): Lane {
@@ -571,10 +652,12 @@ export class KanbanDb {
       // delete whole subtrees so no task elsewhere keeps a dangling parent
       const del = this.q("DELETE FROM tasks WHERE id = ?");
       const delAttachments = this.q("DELETE FROM attachments WHERE card_id = ?");
+      const delComments = this.q("DELETE FROM comments WHERE card_id = ?");
       for (const t of this.laneTasks(lane.id)) {
         for (const id of [t.id, ...this.descendantIds(t.id)]) {
           del.run(id);
           delAttachments.run(id);
+          delComments.run(id);
         }
       }
     }

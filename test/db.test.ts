@@ -234,6 +234,39 @@ test("deleting a task (or its lane) removes its attachments", () => {
   expect(db.latestPlans()[a.id]).toBeUndefined();
 });
 
+test("createComment defaults author/kind and threads read back in order", () => {
+  const a = db.createTask({ title: "a" });
+  const first = db.createComment(a.id, { body: "first" });
+  const second = db.createComment(a.id, { body: "second  ", author: " pi-builder ", kind: "review" });
+  expect(first).toMatchObject({ taskId: a.id, author: "user", kind: "comment", body: "first" });
+  expect(second).toMatchObject({ author: "pi-builder", kind: "review", body: "second" });
+  // rapid-fire inserts may share a millisecond; rowid keeps them in post order
+  for (let i = 0; i < 5; i++) db.createComment(a.id, { body: `c${i}` });
+  expect(db.comments(a.id).map((c) => c.body)).toEqual(["first", "second", "c0", "c1", "c2", "c3", "c4"]);
+  expect(db.comments(a.id)[0]!.createdAt).toBeLessThanOrEqual(db.comments(a.id).at(-1)!.createdAt);
+});
+
+test("createComment rejects empty bodies, unknown kinds, unknown tasks", () => {
+  const a = db.createTask({ title: "a" });
+  expect(() => db.createComment(a.id, { body: "  " })).toThrow(/empty/);
+  expect(() => db.createComment(a.id, { body: "x", kind: "shout" })).toThrow(/unknown comment kind/);
+  expect(() => db.createComment("zzzzz", { body: "x" })).toThrow(/no task/);
+  expect(db.comments(a.id)).toHaveLength(0);
+});
+
+test("deleting a task (or its lane) removes its comments", () => {
+  const a = db.createTask({ title: "a", lane: "plan" });
+  const b = db.createTask({ title: "b" });
+  db.createComment(a.id, { body: "x" });
+  db.createComment(b.id, { body: "y" });
+  db.deleteTask(b.id);
+  expect(() => db.comments(b.id)).toThrow(/no task/);
+  db.deleteLane("plan", true);
+  const raw = new Database(join(dir, "t.db"));
+  expect((raw.query("SELECT COUNT(*) AS n FROM comments").get() as { n: number }).n).toBe(0);
+  raw.close();
+});
+
 test("migrates the prototype plans table into attachments and drops it", () => {
   const path = join(dir, "proto.db");
   new KanbanDb(path).close();
