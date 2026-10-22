@@ -58,6 +58,31 @@ The skill in `skills/kanban/SKILL.md` (installed to `~/.pi/agent/skills/kanban/`
 through lanes, never leave stale cards. The CLI writes the DB directly; the server watches the
 database and pushes changes to the web UI over SSE, so the board updates live.
 
+### Auto-review agents
+
+`kanban serve --auto-review` turns the Review lane into an automatic loop: a headless `pi`
+reviewer (`pi-reviewer`) reviews every card that lands there — approve → Done, block → findings
+land as a `- [ ]` checklist and a `pi-builder` session works them and hands the card back
+(stops after 3 block cycles and leaves a comment for you). Every step is a thread comment, and
+each spawn is logged in the serve terminal under `[autoreview]`.
+
+Configure both agents in the web UI (⚙ in the topbar) — settings apply to the next session
+without restarting serve:
+
+| field | becomes | notes |
+| --- | --- | --- |
+| provider / model | `--provider` / `--model` | empty = pi's default |
+| thinking | `--thinking` | reviewer defaults to `max`, builder to pi's default |
+| skills | `--skill` per line | e.g. `~/.pi/agent/skills/scrutinize` |
+| context | `--append-system-prompt` | standing instructions, your review lens |
+| tools | `--tools` | pi allow/deny syntax |
+| extra flags | passed through raw | escape hatch |
+| timeout | per-session kill | 1–60 min, default 20 |
+
+Env overrides win over the stored config: `KANBAN_AUTOREVIEW_MODEL`, `KANBAN_AUTOREVIEW_THINKING`
+(set to `""` to disable thinking entirely). Reviewer/builder sessions run in the serve process's
+directory and use the card's plan path and thread to locate the work.
+
 ## Scripts
 
 | script | does |
