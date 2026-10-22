@@ -47,7 +47,8 @@
     board.flashId = null;
     const el = document.querySelector(`[data-card="${CSS.escape(id)}"]`);
     if (!el) return;
-    el.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ block: "center", inline: "center", behavior: reduced ? "auto" : "smooth" });
     el.classList.add("flash");
     setTimeout(() => el.classList.remove("flash"), 1500);
   });
@@ -71,7 +72,7 @@
       {/each}
     </div>
     <div class="meta">{board.activeCount} tasks</div>
-    <button class="theme-toggle" onclick={toggleTheme} title="toggle theme">
+    <button class="theme-toggle" onclick={toggleTheme} aria-label="toggle theme" title="toggle theme">
       {theme === "dark" ? "☀" : "☾"}
     </button>
   </header>
@@ -99,6 +100,6 @@
   {/if}
 
   {#if board.error}
-    <button class="error-bar" onclick={() => (board.error = "")}>{board.error}</button>
+    <button class="error-bar" onclick={() => (board.error = "")} title="dismiss">{board.error}</button>
   {/if}
 </div>

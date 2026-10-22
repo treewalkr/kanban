@@ -30,7 +30,11 @@
   tabindex="0"
   onclick={openDetail}
   onkeydown={(e) => {
-    if (e.key === "Enter") openDetail(e);
+    // role="button" convention: both Enter and Space activate
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      openDetail(e);
+    }
   }}
   ondragstart={(e) => {
     e.dataTransfer!.setData("text/plain", task.id);

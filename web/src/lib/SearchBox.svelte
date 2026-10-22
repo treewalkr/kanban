@@ -77,6 +77,7 @@
     class="search"
     type="search"
     placeholder="search…"
+    aria-label="search cards"
     title="press / to focus"
     bind:this={input}
     bind:value={board.search}

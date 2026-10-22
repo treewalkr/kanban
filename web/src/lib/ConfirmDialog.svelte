@@ -25,7 +25,7 @@
     if (e.target === e.currentTarget) oncancel();
   }}
 >
-  <div class="confirm-panel" role="alertdialog" aria-label={title}>
+  <div class="confirm-panel" role="alertdialog" aria-modal="true" aria-label={title}>
     <h3>{title}</h3>
     <p>{message}</p>
     <div class="editor-actions">

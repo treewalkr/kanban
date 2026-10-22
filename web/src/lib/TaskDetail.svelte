@@ -34,6 +34,11 @@
 
   const fmt = (ts: number) => new Date(ts).toLocaleString();
 
+  // move focus into the dialog so Tab doesn't cycle the board behind the overlay
+  function autofocus(node: HTMLElement) {
+    node.focus();
+  }
+
   const childLaneIndex = (t: Task): number =>
     Math.max(0, board.lanes.findIndex((l) => l.id === t.laneId));
 
@@ -63,7 +68,15 @@
     if (e.target === e.currentTarget) board.closeCard();
   }}
 >
-  <div class="editor detail" role="dialog" aria-label="card details" style="--accent: {laneColor(laneIndex)}">
+  <div
+    class="editor detail"
+    role="dialog"
+    aria-modal="true"
+    aria-label="card details"
+    tabindex="-1"
+    use:autofocus
+    style="--accent: {laneColor(laneIndex)}"
+  >
     <div class="detail-head">
       <span class="lane-dot"></span>
       <span class="detail-lane">{laneName}</span>
