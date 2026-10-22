@@ -182,3 +182,10 @@ test("GET/PUT /agents roundtrip; bad role, unknown key, bad values 422", async (
   expect(cleared.status).toBe(200);
   expect(await cleared.json()).toEqual({});
 });
+
+test("GET /activity lists in-flight agent sessions (none when idle)", async () => {
+  const app = createApp(db);
+  const res = await app.handle(new Request("http://localhost/activity"));
+  expect(res.status).toBe(200);
+  expect(await res.json()).toEqual({ sessions: [] });
+});
