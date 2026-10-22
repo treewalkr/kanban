@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { KanbanDb, KanbanError, defaultDbPath, type Task, type TaskPatch } from "./db";
-import { c, laneList, listLanes, searchResults, taskDetail, taskLine } from "./render";
+import { c, commentLine, commentThread, laneList, listLanes, searchResults, taskDetail, taskLine } from "./render";
 import { searchBoard } from "./search";
 
 const VERSION = "0.3.0";
@@ -15,6 +15,8 @@ usage:
   kanban search <query…> [--project <tag>] [--json]
   kanban show <id>
   kanban attach <id> <plan-file>            (re-attach versions; show prints the latest)
+  kanban comment <id> <text…> [--author <name>] [--kind <comment|review|handoff>]
+  kanban comments <id>
   kanban mv <id> <lane> [--pos <1-based>]     kanban mv <id> --next | --prev
   kanban edit <id> [--title <t>] [--note <text>] [--project <tag>] [--lane <ref>]
                           [--parent <id>] [--clear-note] [--clear-parent]
@@ -35,7 +37,7 @@ interface Parsed {
   positional: string[];
 }
 
-const VALUE_FLAGS = new Set(["note", "lane", "project", "pos", "title", "port", "parent"]);
+const VALUE_FLAGS = new Set(["note", "lane", "project", "pos", "title", "port", "parent", "author", "kind"]);
 const BOOL_FLAGS = new Set(["json", "force", "next", "prev", "open", "top", "clear-note", "clear-parent"]);
 
 function parse(argv: string[]): Parsed {
@@ -179,6 +181,27 @@ async function main(): Promise<number> {
         const plan = db.attach(idRef, "plan", content, file);
         if (json) jsonOut(plan);
         else console.log(`${c.green("✓")} attached plan ${c.dim(`v${plan.version}`)} to ${c.dim(plan.taskId)}`);
+        return 0;
+      }
+
+      case "comment": {
+        const [idRef, ...text] = positional;
+        const body = text.join(" ");
+        if (!idRef || !body) {
+          throw new KanbanError("usage: kanban comment <id> <text…> [--author <name>] [--kind <comment|review|handoff>]", "invalid");
+        }
+        const comment = db.createComment(idRef, { body, author: str(flags, "author"), kind: str(flags, "kind") });
+        if (json) jsonOut(comment);
+        else console.log(commentLine(comment));
+        return 0;
+      }
+
+      case "comments": {
+        const idRef = positional[0];
+        if (!idRef) throw new KanbanError("usage: kanban comments <id>", "invalid");
+        const comments = db.comments(idRef);
+        if (json) jsonOut(comments);
+        else console.log(commentThread(comments));
         return 0;
       }
 

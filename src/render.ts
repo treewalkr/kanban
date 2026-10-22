@@ -1,4 +1,4 @@
-import type { KanbanDb, Lane, Task } from "./db";
+import type { Comment, KanbanDb, Lane, Task } from "./db";
 import type { SearchResult } from "./search";
 
 const enabled = !!process.stdout.isTTY && !process.env.NO_COLOR;
@@ -73,6 +73,28 @@ export function taskLine(db: KanbanDb, task: Task): string {
   return `${c.green("✓")} ${c.dim(task.id)}  ${task.title}${chip}  ${c.hex(color, `→ ${lane?.name ?? task.laneId}`)}`;
 }
 
+/** One-line confirmation after writing a comment. */
+export function commentLine(comment: Comment): string {
+  const kind = comment.kind === "comment" ? "" : ` ${c.dim(`(${comment.kind})`)}`;
+  return `${c.green("✓")} ${c.dim(comment.id)}  ${comment.author}${kind}  ${truncate(comment.body, 60)}`;
+}
+
+/** A card's thread, oldest first — dim meta line, body indented like the note. */
+export function commentThread(comments: Comment[]): string {
+  if (comments.length === 0) return c.dim("no comments");
+  return comments
+    .map((comment) => {
+      const meta = [
+        new Date(comment.createdAt).toLocaleString(),
+        comment.author,
+        ...(comment.kind === "comment" ? [] : [comment.kind]),
+      ].join(" · ");
+      const body = comment.body.split("\n").map((line) => `  ${line}`).join("\n");
+      return `${c.dim(meta)}\n${body}`;
+    })
+    .join("\n\n");
+}
+
 /** Ranked search results, best first — title rows read like `ls`, checklists keep their box. */
 export function searchResults(db: KanbanDb, query: string, results: SearchResult[]): string {
   if (results.length === 0) return c.dim(`no matches for '${query}'`);
@@ -122,6 +144,11 @@ export function taskDetail(db: KanbanDb, task: Task): string {
     const meta = [`v${plan.version}`, plan.source, new Date(plan.createdAt).toLocaleString()].filter(Boolean).join(" · ");
     out.push(`${c.dim("plan:")} ${c.dim(meta)}`);
     for (const line of plan.content.split("\n")) out.push(`  ${line}`);
+  }
+  const comments = db.comments(task.id);
+  if (comments.length > 0) {
+    out.push(c.dim("thread:"));
+    out.push(commentThread(comments));
   }
   const children = db.childrenOf(task.id);
   if (children.length > 0) {

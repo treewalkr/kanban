@@ -183,6 +183,37 @@ test("attach versions a plan file; show prints the latest; bad file fails", asyn
   await cli("rm", task.id, "--json");
 });
 
+test("comment/comments roundtrip; show prints the thread; usage errors exit 1", async () => {
+  const task = JSON.parse((await cli("add", "threaded card", "--json")).stdout) as Task;
+
+  const commented = await cli("comment", task.id, "picked this up", "--author", "pi-builder", "--json");
+  expect(commented.code).toBe(0);
+  expect(JSON.parse(commented.stdout)).toMatchObject({ author: "pi-builder", kind: "comment", body: "picked this up", taskId: task.id });
+
+  await cli("comment", task.id, "needs a second pass", "--kind", "review");
+  const listed = JSON.parse((await cli("comments", task.id, "--json")).stdout) as Array<{ body: string; kind: string }>;
+  expect(listed.map((m) => m.body)).toEqual(["picked this up", "needs a second pass"]);
+  expect(listed[1]!.kind).toBe("review");
+
+  const human = await cli("comments", task.id);
+  expect(human.stdout).toContain("pi-builder");
+  expect(human.stdout).toContain("picked this up");
+
+  const show = await cli("show", task.id);
+  expect(show.stdout).toContain("thread:");
+  expect(show.stdout).toContain("needs a second pass");
+
+  const usage = await cli("comment", task.id);
+  expect(usage.code).toBe(1);
+  expect(usage.stderr).toContain("usage: kanban comment");
+
+  const noTask = await cli("comment", "zzzzz", "hi");
+  expect(noTask.code).toBe(1);
+  expect(noTask.stderr).toContain("no task");
+
+  await cli("rm", task.id, "--json");
+});
+
 test("search ranks titles, checklists and notes; --project scopes; empty query fails", async () => {
   await cli(
     "add", "flux capacitor search", "--project", "delorean",
