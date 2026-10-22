@@ -29,6 +29,8 @@ export interface SpawnContext {
   timeoutMs: number;
   config: AgentConfig | null;
   log: (message: string) => void;
+  /** Streams one formatted output line from the running session. */
+  emit: (line: string) => void;
 }
 
 /** Runs one agent session; resolves with the child's exit code (non-zero = failure). */
@@ -46,6 +48,64 @@ export interface AutoReviewOptions {
 
 const DEFAULT_TIMEOUT_MS = 20 * 60_000;
 const DEFAULT_MAX_BLOCKS = 3;
+const MAX_LOG_LINES = 150;
+
+export interface AgentSessionInfo {
+  taskId: string;
+  role: AgentRole;
+  startedAt: number;
+  log: string[];
+}
+
+const activityProviders = new Set<() => AgentSessionInfo[]>();
+
+/** In-flight agent sessions across all autoreview instances, for the /activity endpoint. */
+export function activitySnapshot(): AgentSessionInfo[] {
+  return [...activityProviders].flatMap((provide) => provide());
+}
+
+/**
+ * One pi JSONL event (`--mode json`) → one short log line, or null for noise
+ * (usage churn, text deltas). Unknown events are dropped, not errors.
+ */
+export function formatPiEvent(line: string): string | null {
+  let ev: Record<string, any>;
+  try {
+    ev = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  const compact = (s: string) => s.replace(/\s+/g, " ").trim().slice(0, 200);
+  switch (ev.type) {
+    case "session":
+      return "session started";
+    case "message_end": {
+      if (ev.message?.role !== "assistant") return null;
+      const text = (ev.message.content ?? [])
+        .filter((b: any) => b?.type === "text")
+        .map((b: any) => b.text ?? "")
+        .join(" ")
+        .trim();
+      return text ? `text: ${compact(text)}` : null;
+    }
+    case "tool_execution_start": {
+      const args = ev.args?.command ?? JSON.stringify(ev.args ?? {});
+      return `→ ${ev.toolName}: ${compact(String(args))}`;
+    }
+    case "tool_execution_end": {
+      const ms = typeof ev.durationMs === "number" ? ` ${ev.durationMs}ms` : "";
+      return ev.isError ? `✗ ${ev.toolName}${ms}` : `✓ ${ev.toolName}${ms}`;
+    }
+    case "auto_retry_start":
+      return `retry ${ev.attempt}/${ev.maxAttempts}: ${compact(String(ev.errorMessage ?? ""))}`;
+    case "compaction_start":
+      return `compacting (${ev.reason})`;
+    case "agent_settled":
+      return "settled";
+    default:
+      return null;
+  }
+}
 
 export function reviewerPrompt(task: Task): string {
   return `You are pi-reviewer, an expert code reviewer. Kanban card ${task.id} "${task.title}" was just handed off to Review in this repo.
@@ -96,16 +156,15 @@ export function agentFlags(role: AgentRole, cfg: AgentConfig | null): string[] {
   return args;
 }
 
-const defaultSpawn: SpawnFn = (job, { cwd, timeoutMs, config, log }) => {
+const defaultSpawn: SpawnFn = (job, { cwd, timeoutMs, config, log, emit }) => {
   const proc = Bun.spawn({
-    cmd: ["pi", "--print", "--session-id", `kanban-${job.task.id}`, ...agentFlags(job.role, config), job.prompt],
+    // json mode streams JSONL events while the session runs (--print waits for the end)
+    cmd: ["pi", "--mode", "json", "--session-id", `kanban-${job.task.id}`, ...agentFlags(job.role, config), job.prompt],
     cwd,
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
   });
-  // drain both pipes as they fill so a chatty child can't deadlock
-  const stdout = new Response(proc.stdout).text();
   const stderr = new Response(proc.stderr).text();
   let timedOut = false;
   const timer = setTimeout(() => {
@@ -113,12 +172,35 @@ const defaultSpawn: SpawnFn = (job, { cwd, timeoutMs, config, log }) => {
     proc.kill();
   }, timeoutMs);
   timer.unref?.();
+
+  // stream events as they arrive: manual LF split (readline mis-splits unicode)
+  void (async () => {
+    const reader = proc.stdout.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let nl: number;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const line = formatPiEvent(buf.slice(0, nl));
+          if (line) emit(line);
+          buf = buf.slice(nl + 1);
+        }
+      }
+    } catch {
+      // stream torn down (timeout kill / early exit) — exit handling below covers it
+    }
+  })();
+
   return proc.exited.then(async (code) => {
     clearTimeout(timer);
     if (timedOut) log(`${job.role} ${job.task.id}: timed out after ${Math.round(timeoutMs / 60_000)} min, killed`);
     else if (code !== 0) {
-      const tail = ((await stderr) || (await stdout)).trim();
-      if (tail) log(`${job.role} ${job.task.id}: exited ${code}, output tail:\n${tail.slice(-1500)}`);
+      const tail = (await stderr).trim();
+      if (tail) log(`${job.role} ${job.task.id}: exited ${code}, stderr tail:\n${tail.slice(-1500)}`);
     }
     return timedOut ? 1 : (code ?? 1);
   });
@@ -133,6 +215,9 @@ export function startAutoReview(opts: AutoReviewOptions): { stop(): void } {
 
   const queue: AgentJob[] = [];
   const inFlight = new Set<string>();
+  const sessions = new Map<string, AgentSessionInfo>();
+  const provide = (): AgentSessionInfo[] => [...sessions.values()];
+  activityProviders.add(provide);
   let draining = false;
   let stopped = false;
 
@@ -189,12 +274,21 @@ export function startAutoReview(opts: AutoReviewOptions): { stop(): void } {
         const thinking = flags.includes("--thinking") ? `thinking ${flags[flags.indexOf("--thinking") + 1]}` : "";
         const skills = config?.skills?.length ? `${config.skills.length} skill${config.skills.length === 1 ? "" : "s"}` : "";
         log(`${job.role} start ${job.task.id} "${job.task.title}" (${[model, thinking, skills].filter(Boolean).join(" · ")})`);
+        const session: AgentSessionInfo = { taskId: job.task.id, role: job.role, startedAt: Date.now(), log: [] };
+        sessions.set(job.task.id, session);
+        const emit = (line: string): void => {
+          session.log.push(line);
+          if (session.log.length > MAX_LOG_LINES) session.log.shift();
+          log(`${job.role} ${job.task.id} │ ${line}`);
+        };
         let code = 0;
         try {
-          code = await spawnFn(job, { cwd: opts.cwd, timeoutMs: config?.timeoutMs ?? timeoutMs, config, log });
+          code = await spawnFn(job, { cwd: opts.cwd, timeoutMs: config?.timeoutMs ?? timeoutMs, config, log, emit });
         } catch (err) {
           log(`${job.role} ${job.task.id}: spawn error ${(err as Error).message}`);
           code = 1;
+        } finally {
+          sessions.delete(job.task.id);
         }
         inFlight.delete(job.task.id);
         try {
@@ -246,6 +340,8 @@ export function startAutoReview(opts: AutoReviewOptions): { stop(): void } {
     stop(): void {
       stopped = true;
       stopWatch();
+      activityProviders.delete(provide);
+      sessions.clear();
       queue.length = 0;
     },
   };

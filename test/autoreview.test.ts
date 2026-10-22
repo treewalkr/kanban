@@ -6,10 +6,13 @@ import { KanbanDb } from "../src/db";
 import {
   BUILDER_AUTHOR,
   REVIEWER_AUTHOR,
+  activitySnapshot,
   agentFlags,
+  formatPiEvent,
   reviewerPrompt,
   startAutoReview,
   type AgentJob,
+  type SpawnContext,
   type SpawnFn,
 } from "../src/autoreview";
 
@@ -338,5 +341,64 @@ describe("auto-review", () => {
     expect(seen[0]!.flags).toContain("--skill");
     expect(seen[0]!.flags).toContain("claude-opus-4-5");
     expect(seen[0]!.timeoutMs).toBe(300_000);
+  });
+
+  test("formatPiEvent renders signal events, drops noise", () => {
+    expect(formatPiEvent('{"type":"session","version":3,"id":"x","cwd":"/y"}')).toBe("session started");
+    expect(
+      formatPiEvent(
+        '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"looks good\\nverdict soon"}]}}',
+      ),
+    ).toBe("text: looks good verdict soon");
+    expect(formatPiEvent('{"type":"message_end","message":{"role":"user","content":[]}}')).toBeNull();
+    expect(formatPiEvent('{"type":"tool_execution_start","toolName":"bash","args":{"command":"bun test"}}')).toBe(
+      "→ bash: bun test",
+    );
+    expect(formatPiEvent('{"type":"tool_execution_end","toolName":"bash","durationMs":240,"isError":false}')).toBe(
+      "✓ bash 240ms",
+    );
+    expect(formatPiEvent('{"type":"tool_execution_end","toolName":"edit","isError":true}')).toBe("✗ edit");
+    expect(
+      formatPiEvent('{"type":"auto_retry_start","attempt":1,"maxAttempts":3,"errorMessage":"529 overloaded"}'),
+    ).toBe("retry 1/3: 529 overloaded");
+    expect(formatPiEvent('{"type":"compaction_start","reason":"threshold"}')).toBe("compacting (threshold)");
+    expect(formatPiEvent('{"type":"message_update","usage":{"input":10}}')).toBeNull();
+    expect(
+      formatPiEvent('{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"Hel"}}'),
+    ).toBeNull();
+    expect(formatPiEvent("not json")).toBeNull();
+    const long = "x".repeat(400);
+    expect(formatPiEvent(`{"type":"tool_execution_start","toolName":"bash","args":{"command":"${long}"}}`)!.length).toBeLessThanOrEqual(220);
+  });
+
+  test("activity registry: session lists with emitted lines, clears when the job ends", async () => {
+    const { dbFile, writer: w } = setup();
+    const card = cardInReview(w);
+    let ctx!: SpawnContext;
+    let finish!: (code: number) => void;
+    const spawnFn: SpawnFn = (job, context) => {
+      ctx = context;
+      return new Promise<number>((resolve) => (finish = resolve));
+    };
+    start(spawnFn, dbFile);
+    expect(activitySnapshot().map((s) => s.taskId)).toEqual([card.id]);
+    ctx.emit("session started");
+    ctx.emit("→ bash: bun test");
+    const snap = activitySnapshot()[0]!;
+    expect(snap.role).toBe("reviewer");
+    expect(snap.log).toEqual(["session started", "→ bash: bun test"]);
+    finish(0);
+    await sleep(20);
+    expect(activitySnapshot().some((s) => s.taskId === card.id)).toBe(false);
+  });
+
+  test("activity registry: stop() clears sessions even with a pending spawn", () => {
+    const { dbFile, writer: w } = setup();
+    cardInReview(w);
+    const spawnFn: SpawnFn = () => new Promise<number>(() => {});
+    const handle = start(spawnFn, dbFile);
+    expect(activitySnapshot().length).toBe(1);
+    handle.stop();
+    expect(activitySnapshot().length).toBe(0);
   });
 });
