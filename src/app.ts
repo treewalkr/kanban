@@ -6,11 +6,12 @@ const errorStatus = { "not-found": 404, conflict: 409, invalid: 400 } as const;
 
 /**
  * Map KanbanError to a typed `status()` response (treaty moves it to `error.value`);
- * anything else is a real bug and rethrows.
+ * anything else is a real bug and rethrows. Generic so a handler can declare its
+ * success type and Eden infers `data` on the client.
  */
-function fail(e: unknown, status: (code: number, value: unknown) => unknown): unknown {
+function fail<T>(e: unknown, status: (code: number, value: unknown) => unknown): T {
   if (e instanceof KanbanError) {
-    return status(errorStatus[e.code], { error: e.message, code: e.code });
+    return status(errorStatus[e.code], { error: e.message, code: e.code }) as T;
   }
   throw e;
 }
@@ -114,7 +115,7 @@ export const createApp = (db: KanbanDb) => {
     )
     .get(
       "/tasks/:id/comments",
-      ({ params, status }): Comment[] | unknown => {
+      ({ params, status }): Comment[] => {
         try {
           return db.comments(params.id);
         } catch (e) {
@@ -125,9 +126,11 @@ export const createApp = (db: KanbanDb) => {
     )
     .post(
       "/tasks/:id/comments",
-      ({ params, body, status }): Comment | unknown => {
+      ({ params, body, status, set }): Comment => {
         try {
-          return status(201, db.createComment(params.id, body));
+          const comment = db.createComment(params.id, body);
+          set.status = 201;
+          return comment;
         } catch (e) {
           return fail(e, status);
         }

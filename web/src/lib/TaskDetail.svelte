@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { Task } from "../../../src/db";
+  import type { Comment, Task } from "../../../src/db";
+  import { api } from "../api";
   import { board } from "./board.svelte";
   import IdChip from "./IdChip.svelte";
   import { renderMarkdown } from "./markdown";
@@ -53,6 +54,25 @@
     if (!title) return;
     subtaskTitle = "";
     await board.addTask(me.laneId, title, undefined, task.id);
+  }
+
+  // per-card thread state: fetch on open, append after own post — SSE refresh
+  // is paused while a modal is open, so a reopen catches CLI-side comments
+  let comments = $state<Comment[]>([]);
+  let commentBody = $state("");
+
+  $effect(() => {
+    api.tasks({ id: task.id }).comments.get().then(({ data, error }) => {
+      if (!error) comments = data;
+    });
+  });
+
+  async function addComment() {
+    const body = commentBody.trim();
+    if (!body) return;
+    commentBody = "";
+    const { data, error } = await api.tasks({ id: task.id }).comments.post({ body });
+    if (!error) comments.push(data);
   }
 </script>
 
@@ -109,6 +129,34 @@
           <div class="detail-note md">{@html renderMarkdown(plan.content)}</div>
         </details>
       {/if}
+      <div class="detail-comments">
+        <div class="children-head">thread · {comments.length}</div>
+        {#if comments.length === 0}
+          <p class="comments-empty">no comments — the card is the forum</p>
+        {:else}
+          <ul class="comment-list">
+            {#each comments as comment (comment.id)}
+              <li>
+                <div class="comment-meta">
+                  <span class="author">{comment.author}</span>
+                  {#if comment.kind !== "comment"}<span class="kind {comment.kind}">{comment.kind}</span>{/if}
+                  <span class="when">{timeAgo(comment.createdAt)}</span>
+                </div>
+                <div class="comment-body md">{@html renderMarkdown(comment.body)}</div>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        <form
+          class="add-comment"
+          onsubmit={(e) => {
+            e.preventDefault();
+            addComment();
+          }}
+        >
+          <input placeholder="+ comment" bind:value={commentBody} />
+        </form>
+      </div>
       {#if childRows.length > 0}
         <div class="detail-children">
           <div class="children-head">

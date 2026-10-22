@@ -1234,6 +1234,92 @@ button.id-copy {
   width: 100%;
 }
 
+/* ---------- card thread ---------- */
+
+.detail-comments {
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: var(--radius-control);
+  background: var(--bg-subtle);
+  padding: 8px 10px;
+}
+
+.comments-empty {
+  margin: 0 0 6px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.comment-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.comment-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.comment-meta .author {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.comment-meta .kind {
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
+  border-radius: 999px;
+  font-size: 9.5px;
+  line-height: 1.5;
+}
+
+.comment-meta .kind.review {
+  color: #d29922;
+}
+
+.comment-meta .kind.handoff {
+  color: #bc8cff;
+}
+
+.comment-meta .when {
+  margin-left: auto;
+}
+
+.comment-body {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.comment-body.md > :first-child {
+  margin-top: 0;
+}
+
+.comment-body.md > :last-child {
+  margin-bottom: 0;
+}
+
+.comment-body.md p {
+  margin: 0 0 6px;
+}
+
+.add-comment {
+  margin-top: 8px;
+}
+
+.add-comment input {
+  width: 100%;
+}
+
 /* ---------- markdown ---------- */
 
 .md ul,
