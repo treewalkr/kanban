@@ -35,7 +35,7 @@ task ids: any unique prefix works. add --json for machine-readable output.
 search: ranks titles, checklist lines, note text, then plans — same results as the web dropdown.
 hierarchy: --parent nests a card (epic → story → subtask, max depth 3).
 threads: comment/handoff/review append to the card thread; brief prints full pickup context.
-auto-review: serve --auto-review spawns a pi reviewer for cards in Review (block → pi-builder works the findings, max 3 cycles).`;
+auto-review: serve --auto-review spawns a pi reviewer for cards in Review (thinking max; KANBAN_AUTOREVIEW_MODEL/THINKING override; block → pi-builder works the findings, max 3 cycles).`;
 
 interface Parsed {
   flags: Record<string, string | true | string[]>;

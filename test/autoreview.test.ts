@@ -6,6 +6,7 @@ import { KanbanDb } from "../src/db";
 import {
   BUILDER_AUTHOR,
   REVIEWER_AUTHOR,
+  reviewerExtraArgs,
   reviewerPrompt,
   startAutoReview,
   type AgentJob,
@@ -248,5 +249,24 @@ describe("auto-review", () => {
     expect(prompt).toContain("review abc12 --approve");
     expect(prompt).toContain("review abc12 --block");
     expect(prompt).toContain("--finding");
+  });
+
+  test("reviewer pi flags: thinking max by default, env-overridable", () => {
+    const restore = { m: process.env.KANBAN_AUTOREVIEW_MODEL, t: process.env.KANBAN_AUTOREVIEW_THINKING };
+    try {
+      delete process.env.KANBAN_AUTOREVIEW_MODEL;
+      delete process.env.KANBAN_AUTOREVIEW_THINKING;
+      expect(reviewerExtraArgs()).toEqual(["--thinking", "max"]);
+      process.env.KANBAN_AUTOREVIEW_MODEL = "anthropic/claude-opus-4";
+      process.env.KANBAN_AUTOREVIEW_THINKING = "high";
+      expect(reviewerExtraArgs()).toEqual(["--model", "anthropic/claude-opus-4", "--thinking", "high"]);
+      process.env.KANBAN_AUTOREVIEW_THINKING = "";
+      expect(reviewerExtraArgs()).toEqual(["--model", "anthropic/claude-opus-4"]);
+    } finally {
+      for (const [k, v] of Object.entries({ KANBAN_AUTOREVIEW_MODEL: restore.m, KANBAN_AUTOREVIEW_THINKING: restore.t })) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
   });
 });

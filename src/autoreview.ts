@@ -73,9 +73,26 @@ export function builderPrompt(task: Task): string {
 Never move the card with mv. If a finding looks wrong, say so in the handoff message instead of silently skipping it.`;
 }
 
+/** Extra pi flags for reviewer sessions — max effort by default. */
+export function reviewerExtraArgs(): string[] {
+  const args: string[] = [];
+  const model = process.env.KANBAN_AUTOREVIEW_MODEL?.trim();
+  if (model) args.push("--model", model);
+  const thinking = (process.env.KANBAN_AUTOREVIEW_THINKING ?? "max").trim();
+  if (thinking) args.push("--thinking", thinking);
+  return args;
+}
+
 const defaultSpawn: SpawnFn = (job, { cwd, timeoutMs, log }) => {
   const proc = Bun.spawn({
-    cmd: ["pi", "--print", "--session-id", `kanban-${job.task.id}`, job.prompt],
+    cmd: [
+      "pi",
+      "--print",
+      "--session-id",
+      `kanban-${job.task.id}`,
+      ...(job.role === "reviewer" ? reviewerExtraArgs() : []),
+      job.prompt,
+    ],
     cwd,
     stdin: "ignore",
     stdout: "pipe",
