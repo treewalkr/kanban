@@ -78,34 +78,36 @@
       </nav>
     {/if}
     <h2 class="detail-title">{me.title}</h2>
-    {#if me.note}
-      <div class="detail-note md">{@html renderMarkdown(me.note)}</div>
-    {:else}
-      <p class="detail-note empty">no note</p>
-    {/if}
-    {#if childRows.length > 0}
-      <div class="detail-children">
-        <div class="children-head">
-          subtasks
-          {#if progress.total > 0}
-            <span class="progress" class:complete={progress.done === progress.total}>
-              {progress.done}/{progress.total} ✓
-            </span>
-          {/if}
+    <div class="detail-body">
+      {#if me.note}
+        <div class="detail-note md">{@html renderMarkdown(me.note)}</div>
+      {:else}
+        <p class="detail-note empty">no note</p>
+      {/if}
+      {#if childRows.length > 0}
+        <div class="detail-children">
+          <div class="children-head">
+            subtasks
+            {#if progress.total > 0}
+              <span class="progress" class:complete={progress.done === progress.total}>
+                {progress.done}/{progress.total} ✓
+              </span>
+            {/if}
+          </div>
+          <ul>
+            {#each childRows as row (row.t.id)}
+              <li style="padding-left: {row.depth * 14}px">
+                <button class="child-row" title="open {row.t.title}" onclick={() => board.openCard(row.t)}>
+                  <span class="lane-dot" style="--accent: {laneColor(childLaneIndex(row.t))}"></span>
+                  <span class="t">{row.t.title}</span>
+                  {#if row.t.laneId === "done"}<span class="tick">✓</span>{/if}
+                </button>
+              </li>
+            {/each}
+          </ul>
         </div>
-        <ul>
-          {#each childRows as row (row.t.id)}
-            <li style="padding-left: {row.depth * 14}px">
-              <button class="child-row" title="open {row.t.title}" onclick={() => board.openCard(row.t)}>
-                <span class="lane-dot" style="--accent: {laneColor(childLaneIndex(row.t))}"></span>
-                <span class="t">{row.t.title}</span>
-                {#if row.t.laneId === "done"}<span class="tick">✓</span>{/if}
-              </button>
-            </li>
-          {/each}
-        </ul>
-      </div>
-    {/if}
+      {/if}
+    </div>
     <div class="detail-meta">
       <div><span class="k">created</span>{fmt(me.createdAt)}</div>
       <div><span class="k">updated</span>{fmt(me.updatedAt)} · {timeAgo(me.updatedAt)}</div>
