@@ -183,10 +183,14 @@ class BoardStore {
     await this.refresh();
   }
 
-  async addLane(name: string): Promise<void> {
+  async addLane(name: string): Promise<boolean> {
     const { error } = await api.lanes.post({ name });
-    if (error) return this.fail(error);
+    if (error) {
+      this.fail(error);
+      return false;
+    }
     await this.refresh();
+    return true;
   }
 
   async updateLane(id: string, patch: LanePatch): Promise<void> {

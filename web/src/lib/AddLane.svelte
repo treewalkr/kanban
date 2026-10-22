@@ -10,7 +10,8 @@
 
   async function submit() {
     const name = value.trim();
-    if (name) await board.addLane(name);
+    if (!name) return;
+    if (!(await board.addLane(name))) return; // keep the text so a failed post isn't lost
     value = "";
     open = false;
   }
