@@ -35,6 +35,22 @@ export interface Attachment {
 
 export type CommentKind = "comment" | "review" | "handoff";
 
+export type AgentRole = "reviewer" | "builder";
+
+export type AgentThinking = "" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+
+/** Per-role pi agent settings for the auto-review loop; stored as one JSON blob per role. */
+export interface AgentConfig {
+  provider?: string;
+  model?: string;
+  thinking?: AgentThinking;
+  skills?: string[]; // paths passed to pi as --skill
+  context?: string; // passed as --append-system-prompt
+  tools?: string;
+  extraArgs?: string[]; // raw pi flags
+  timeoutMs?: number;
+}
+
 export interface Comment {
   id: string;
   taskId: string;
@@ -80,6 +96,7 @@ const GAP = 100;
 const MIN_GAP = 0.01;
 
 const COMMENT_KINDS: ReadonlySet<string> = new Set(["comment", "review", "handoff"]);
+const AGENT_ROLES: ReadonlySet<string> = new Set(["reviewer", "builder"]);
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS lanes (
@@ -121,6 +138,11 @@ CREATE TABLE IF NOT EXISTS comments (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS comments_card ON comments (card_id, created_at);
+CREATE TABLE IF NOT EXISTS agent_configs (
+  role TEXT PRIMARY KEY,
+  config TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 `;
 
 export const DEFAULT_LANES: Array<Omit<Lane, "position">> = [
@@ -606,6 +628,37 @@ export class KanbanDb {
       const comment = this.createComment(task.id, { author: input.author, kind, body: input.message });
       return { task: moved, comment };
     })();
+  }
+
+  // ---------- agent configs ----------
+
+  /** The stored agent config for a role, or null when never set. */
+  agentConfig(role: string): AgentConfig | null {
+    const row = this.q("SELECT config FROM agent_configs WHERE role = ?").get(role) as { config: string } | null;
+    return row ? (JSON.parse(row.config) as AgentConfig) : null;
+  }
+
+  /** Full replace of a role's config; empty strings/arrays drop out. */
+  setAgentConfig(role: string, config: AgentConfig): AgentConfig {
+    if (!AGENT_ROLES.has(role)) {
+      throw new KanbanError(`unknown agent role '${role}' (reviewer | builder)`, "invalid");
+    }
+    const clean: AgentConfig = {};
+    if (config.provider?.trim()) clean.provider = config.provider.trim();
+    if (config.model?.trim()) clean.model = config.model.trim();
+    if (config.thinking) clean.thinking = config.thinking;
+    const skills = (config.skills ?? []).map((s) => s.trim()).filter(Boolean);
+    if (skills.length > 0) clean.skills = skills;
+    if (config.context?.trim()) clean.context = config.context.trim();
+    if (config.tools?.trim()) clean.tools = config.tools.trim();
+    const extraArgs = (config.extraArgs ?? []).map((a) => a.trim()).filter(Boolean);
+    if (extraArgs.length > 0) clean.extraArgs = extraArgs;
+    if (config.timeoutMs !== undefined) clean.timeoutMs = config.timeoutMs;
+    this.q(
+      `INSERT INTO agent_configs (role, config, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(role) DO UPDATE SET config = excluded.config, updated_at = excluded.updated_at`,
+    ).run(role, JSON.stringify(clean), Date.now());
+    return this.agentConfig(role)!;
   }
 
   // ---------- lane writes ----------

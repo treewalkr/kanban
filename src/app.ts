@@ -1,6 +1,6 @@
 import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
-import { KanbanDb, KanbanError, defaultDbPath, type Attachment, type Board, type Comment, type Lane, type Task } from "./db";
+import { KanbanDb, KanbanError, defaultDbPath, type AgentConfig, type Attachment, type Board, type Comment, type Lane, type Task } from "./db";
 
 const errorStatus = { "not-found": 404, conflict: 409, invalid: 400 } as const;
 
@@ -234,6 +234,44 @@ export const createApp = (db: KanbanDb) => {
           name: t.Optional(t.String()),
           description: t.Optional(t.String()),
           index: t.Optional(t.Number({ minimum: 0 })),
+        }),
+      },
+    )
+    .get("/agents", (): { reviewer: AgentConfig | null; builder: AgentConfig | null } => ({
+      reviewer: db.agentConfig("reviewer"),
+      builder: db.agentConfig("builder"),
+    }))
+    .put(
+      "/agents/:role",
+      ({ params, body, status }): AgentConfig | unknown => {
+        try {
+          return status(200, db.setAgentConfig(params.role, body));
+        } catch (e) {
+          return fail(e, status);
+        }
+      },
+      {
+        params: t.Object({ role: t.Union([t.Literal("reviewer"), t.Literal("builder")]) }),
+        body: t.Object({
+          provider: t.Optional(t.String()),
+          model: t.Optional(t.String()),
+          thinking: t.Optional(
+            t.Union([
+              t.Literal(""),
+              t.Literal("off"),
+              t.Literal("minimal"),
+              t.Literal("low"),
+              t.Literal("medium"),
+              t.Literal("high"),
+              t.Literal("xhigh"),
+              t.Literal("max"),
+            ]),
+          ),
+          skills: t.Optional(t.Array(t.String({ minLength: 1 }))),
+          context: t.Optional(t.String()),
+          tools: t.Optional(t.String()),
+          extraArgs: t.Optional(t.Array(t.String({ minLength: 1 }))),
+          timeoutMs: t.Optional(t.Number({ minimum: 60_000, maximum: 3_600_000 })),
         }),
       },
     )

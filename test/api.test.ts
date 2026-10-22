@@ -129,3 +129,56 @@ test("GET/POST /tasks/:id/comments thread a card; unknown task 404s, bad body 4x
   );
   expect(badKind.status).toBe(422);
 });
+
+test("GET/PUT /agents roundtrip; bad role, unknown key, bad values 422", async () => {
+  const app = createApp(db);
+
+  const empty = await app.handle(new Request("http://localhost/agents"));
+  expect(empty.status).toBe(200);
+  expect(await empty.json()).toEqual({ reviewer: null, builder: null });
+
+  const put = await app.handle(
+    new Request("http://localhost/agents/reviewer", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: "anthropic",
+        model: "claude-opus-4-5",
+        thinking: "high",
+        skills: ["~/.pi/agent/skills/scrutinize"],
+        context: "we value perf",
+        timeoutMs: 1_200_000,
+      }),
+    }),
+  );
+  expect(put.status).toBe(200);
+  expect(await put.json()).toMatchObject({ model: "claude-opus-4-5", thinking: "high" });
+
+  const got = await app.handle(new Request("http://localhost/agents"));
+  expect(await got.json()).toMatchObject({ reviewer: { provider: "anthropic" }, builder: null });
+
+  const json = { headers: { "content-type": "application/json" } };
+  const putBody = (body: unknown) => ({ ...json, body: JSON.stringify(body) });
+  const badRole = await app.handle(new Request("http://localhost/agents/worker", { method: "PUT", ...putBody({}) }));
+  expect(badRole.status).toBe(422);
+  const unknownKey = await app.handle(
+    new Request("http://localhost/agents/reviewer", { method: "PUT", ...putBody({ temperature: 0.2 }) }),
+  );
+  expect(unknownKey.status).toBe(200); // Elysia strips unknown fields rather than rejecting them
+  expect(await unknownKey.json()).toEqual({});
+  const badThinking = await app.handle(
+    new Request("http://localhost/agents/reviewer", { method: "PUT", ...putBody({ thinking: "ultra" }) }),
+  );
+  expect(badThinking.status).toBe(422);
+  const shortTimeout = await app.handle(
+    new Request("http://localhost/agents/reviewer", { method: "PUT", ...putBody({ timeoutMs: 5 }) }),
+  );
+  expect(shortTimeout.status).toBe(422);
+
+  // PUT is a full replace: an empty body clears the stored config
+  const cleared = await app.handle(
+    new Request("http://localhost/agents/reviewer", { method: "PUT", ...putBody({}) }),
+  );
+  expect(cleared.status).toBe(200);
+  expect(await cleared.json()).toEqual({});
+});

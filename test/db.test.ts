@@ -18,6 +18,33 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+test("agentConfig: null → set → roundtrip → replace; unknown role rejected", () => {
+  expect(db.agentConfig("reviewer")).toBeNull();
+  const saved = db.setAgentConfig("reviewer", {
+    provider: "anthropic",
+    model: " claude-opus-4-5 ",
+    thinking: "max",
+    skills: [" ~/.pi/skills/x ", "", "  "],
+    context: "we value perf over features",
+    timeoutMs: 1_200_000,
+  });
+  expect(saved).toEqual({
+    provider: "anthropic",
+    model: "claude-opus-4-5",
+    thinking: "max",
+    skills: ["~/.pi/skills/x"],
+    context: "we value perf over features",
+    timeoutMs: 1_200_000,
+  });
+  expect(db.agentConfig("reviewer")).toEqual(saved);
+  expect(db.agentConfig("builder")).toBeNull();
+
+  // set is a full replace — dropped fields disappear
+  expect(db.setAgentConfig("reviewer", { model: "other" })).toEqual({ model: "other" });
+
+  expect(() => db.setAgentConfig("worker", {})).toThrow(KanbanError);
+});
+
 test("seeds the default workflow lanes in order", () => {
   const lanes = db.lanes();
   expect(lanes.map((l) => l.id)).toEqual(DEFAULT_LANES.map((l) => l.id));
