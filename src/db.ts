@@ -588,6 +588,27 @@ export class KanbanDb {
     ).map(rowToComment);
   }
 
+  /**
+   * Atomic baton pass: lane move (plus optional review findings appended to the
+   * note as checklist lines) and the thread record commit together or not at all.
+   */
+  handoff(
+    taskRef: string,
+    laneRef: string,
+    input: { author?: string; kind?: string; message: string; findings?: string[] },
+  ): { task: Task; comment: Comment } {
+    const task = this.resolveTask(taskRef);
+    const kind = input.kind ?? "handoff";
+    const findings = input.findings ?? [];
+    return this.db.transaction((): { task: Task; comment: Comment } => {
+      const note =
+        findings.length > 0 ? `${task.note}\n${findings.map((f) => `- [ ] ${f.trim()}`).join("\n")}` : undefined;
+      const moved = this.updateTask(task.id, { ...(note !== undefined ? { note } : {}), lane: laneRef });
+      const comment = this.createComment(task.id, { author: input.author, kind, body: input.message });
+      return { task: moved, comment };
+    })();
+  }
+
   // ---------- lane writes ----------
 
   createLane(input: { name: string; description?: string; index?: number }): Lane {

@@ -214,6 +214,59 @@ test("comment/comments roundtrip; show prints the thread; usage errors exit 1", 
   await cli("rm", task.id, "--json");
 });
 
+test("handoff moves + records; review --approve/--block with findings", async () => {
+  const task = JSON.parse((await cli("add", "baton card", "--lane", "review", "--json")).stdout) as Task;
+
+  const bad = await cli("handoff", task.id, "implement");
+  expect(bad.code).toBe(1);
+  expect(bad.stderr).toContain("usage: kanban handoff");
+
+  const passed = await cli(
+    "handoff", task.id, "implement",
+    "--message", "build done, please review", "--author", "pi-builder", "--json",
+  );
+  expect(passed.code).toBe(0);
+  const result = JSON.parse(passed.stdout) as { task: Task; comment: { kind: string; author: string } };
+  expect(result.task.laneId).toBe("implement");
+  expect(result.comment).toMatchObject({ kind: "handoff", author: "pi-builder" });
+
+  await cli("mv", task.id, "review");
+  const approved = await cli("review", task.id, "--approve", "--json");
+  expect(approved.code).toBe(0);
+  const approveResult = JSON.parse(approved.stdout) as { task: Task; comment: { kind: string; body: string } };
+  expect(approveResult.task.laneId).toBe("done");
+  expect(approveResult.comment).toMatchObject({ kind: "review", body: "approved" });
+
+  const blocked = await cli(
+    "review", task.id, "--block",
+    "--message", "flux capacitor leaks",
+    "--finding", "Fix leak src/flux.ts:10",
+    "--finding", "Add leak test",
+    "--json",
+  );
+  expect(blocked.code).toBe(0);
+  const blockResult = JSON.parse(blocked.stdout) as { task: Task; comment: { kind: string } };
+  expect(blockResult.task.laneId).toBe("implement");
+  expect(blockResult.comment.kind).toBe("review");
+  const after = JSON.parse((await cli("show", task.id, "--json")).stdout) as Task;
+  expect(after.note).toContain("- [ ] Fix leak src/flux.ts:10");
+  expect(after.note).toContain("- [ ] Add leak test");
+
+  const neither = await cli("review", task.id);
+  expect(neither.code).toBe(1);
+  expect(neither.stderr).toContain("usage: kanban review");
+
+  const noMsg = await cli("review", task.id, "--block");
+  expect(noMsg.code).toBe(1);
+  expect(noMsg.stderr).toContain("--block needs --message");
+
+  const strayFinding = await cli("review", task.id, "--approve", "--finding", "x");
+  expect(strayFinding.code).toBe(1);
+  expect(strayFinding.stderr).toContain("--finding is only valid with --block");
+
+  await cli("rm", task.id, "--json");
+});
+
 test("search ranks titles, checklists and notes; --project scopes; empty query fails", async () => {
   await cli(
     "add", "flux capacitor search", "--project", "delorean",

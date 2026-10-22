@@ -267,6 +267,33 @@ test("deleting a task (or its lane) removes its comments", () => {
   raw.close();
 });
 
+test("handoff moves the card and records a typed comment atomically", () => {
+  const a = db.createTask({ title: "a", lane: "review" });
+  const { task, comment } = db.handoff(a.id, "implement", {
+    message: "found a bug, back to you",
+    author: "pi-reviewer",
+    kind: "review",
+  });
+  expect(task.laneId).toBe("implement");
+  expect(comment).toMatchObject({ taskId: a.id, author: "pi-reviewer", kind: "review", body: "found a bug, back to you" });
+  expect(db.comments(a.id)).toHaveLength(1);
+});
+
+test("handoff findings append checklist lines to the note", () => {
+  const a = db.createTask({ title: "a", lane: "review", note: "existing" });
+  db.handoff(a.id, "implement", { message: "blocked", kind: "review", findings: ["Fix auth src/auth.ts:42", "Add test"] });
+  expect(db.resolveTask(a.id).note).toBe("existing\n- [ ] Fix auth src/auth.ts:42\n- [ ] Add test");
+});
+
+test("a bad handoff message rolls back the lane move and note append", () => {
+  const a = db.createTask({ title: "a", lane: "review", note: "original" });
+  expect(() => db.handoff(a.id, "done", { message: "   " })).toThrow(/empty/);
+  const after = db.resolveTask(a.id);
+  expect(after.laneId).toBe("review");
+  expect(after.note).toBe("original");
+  expect(db.comments(a.id)).toHaveLength(0);
+});
+
 test("migrates the prototype plans table into attachments and drops it", () => {
   const path = join(dir, "proto.db");
   new KanbanDb(path).close();

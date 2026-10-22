@@ -17,6 +17,8 @@ usage:
   kanban attach <id> <plan-file>            (re-attach versions; show prints the latest)
   kanban comment <id> <text…> [--author <name>] [--kind <comment|review|handoff>]
   kanban comments <id>
+  kanban handoff <id> <lane> --message <text> [--author <name>]   (atomic move + thread record)
+  kanban review <id> (--approve | --block --message <text> [--finding <text>]…)
   kanban mv <id> <lane> [--pos <1-based>]     kanban mv <id> --next | --prev
   kanban edit <id> [--title <t>] [--note <text>] [--project <tag>] [--lane <ref>]
                           [--parent <id>] [--clear-note] [--clear-parent]
@@ -33,15 +35,16 @@ search: ranks titles, checklist lines, note text, then plans — same results as
 hierarchy: --parent nests a card (epic → story → subtask, max depth 3).`;
 
 interface Parsed {
-  flags: Record<string, string | true>;
+  flags: Record<string, string | true | string[]>;
   positional: string[];
 }
 
-const VALUE_FLAGS = new Set(["note", "lane", "project", "pos", "title", "port", "parent", "author", "kind"]);
-const BOOL_FLAGS = new Set(["json", "force", "next", "prev", "open", "top", "clear-note", "clear-parent"]);
+const VALUE_FLAGS = new Set(["note", "lane", "project", "pos", "title", "port", "parent", "author", "kind", "message"]);
+const BOOL_FLAGS = new Set(["json", "force", "next", "prev", "open", "top", "clear-note", "clear-parent", "approve", "block"]);
+const MULTI_FLAGS = new Set(["finding"]); // repeatable: each occurrence appends one value
 
 function parse(argv: string[]): Parsed {
-  const flags: Record<string, string | true> = {};
+  const flags: Record<string, string | true | string[]> = {};
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -52,7 +55,12 @@ function parse(argv: string[]): Parsed {
     if (a.startsWith("--")) {
       const key = a.slice(2);
       if (BOOL_FLAGS.has(key)) flags[key] = true;
-      else if (VALUE_FLAGS.has(key)) flags[key] = argv[++i] ?? "";
+      else if (MULTI_FLAGS.has(key)) {
+        const v = flags[key];
+        const next = argv[++i] ?? "";
+        if (Array.isArray(v)) v.push(next);
+        else flags[key] = [next];
+      } else if (VALUE_FLAGS.has(key)) flags[key] = argv[++i] ?? "";
       else throw new KanbanError(`unknown flag '${a}' (see: kanban help)`, "invalid");
     } else {
       positional.push(a);
@@ -64,6 +72,11 @@ function parse(argv: string[]): Parsed {
 const str = (flags: Parsed["flags"], key: string): string | undefined => {
   const v = flags[key];
   return typeof v === "string" ? v : undefined;
+};
+
+const arr = (flags: Parsed["flags"], key: string): string[] => {
+  const v = flags[key];
+  return Array.isArray(v) ? v : [];
 };
 
 function jsonOut(value: unknown): void {
@@ -202,6 +215,40 @@ async function main(): Promise<number> {
         const comments = db.comments(idRef);
         if (json) jsonOut(comments);
         else console.log(commentThread(comments));
+        return 0;
+      }
+
+      case "handoff": {
+        const [idRef, laneRef] = positional;
+        const message = str(flags, "message");
+        if (!idRef || !laneRef || !message) {
+          throw new KanbanError("usage: kanban handoff <id> <lane> --message <text> [--author <name>]", "invalid");
+        }
+        const result = db.handoff(idRef, laneRef, { message, author: str(flags, "author") });
+        if (json) jsonOut(result);
+        else console.log(`${taskLine(db, result.task)}\n${commentLine(result.comment)}`);
+        return 0;
+      }
+
+      case "review": {
+        const idRef = positional[0];
+        const message = str(flags, "message");
+        const approve = !!flags.approve;
+        const block = !!flags.block;
+        if (!idRef || approve === block) {
+          throw new KanbanError(
+            "usage: kanban review <id> (--approve | --block --message <text> [--finding <text>]…)",
+            "invalid",
+          );
+        }
+        if (block && !message) throw new KanbanError("--block needs --message <text>", "invalid");
+        const findings = arr(flags, "finding");
+        if (!block && findings.length > 0) throw new KanbanError("--finding is only valid with --block", "invalid");
+        const result = approve
+          ? db.handoff(idRef, laneById(db, "done"), { message: message ?? "approved", author: str(flags, "author"), kind: "review" })
+          : db.handoff(idRef, laneById(db, "implement"), { message: message!, author: str(flags, "author"), kind: "review", findings });
+        if (json) jsonOut(result);
+        else console.log(`${taskLine(db, result.task)}\n${commentLine(result.comment)}`);
         return 0;
       }
 
