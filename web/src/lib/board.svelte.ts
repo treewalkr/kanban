@@ -1,5 +1,6 @@
 import { api } from "../api";
 import type { Attachment, Lane, LanePatch, Task, TaskPatch } from "../../../src/db";
+import type { AgentSessionInfo } from "../../../src/autoreview";
 import { searchBoard } from "../../../src/search";
 
 type EdenError = { value?: unknown };
@@ -21,6 +22,8 @@ class BoardStore {
   expanded = $state<Set<string>>(new Set());
   /** Card to scroll to and flash once the detail modal closes (search jumps). */
   flashId = $state<string | null>(null);
+  /** In-flight pi agent sessions, keyed by task id (poll-driven: sessions emit no DB writes). */
+  activity = $state<Record<string, AgentSessionInfo>>({});
 
   readonly projects = $derived(
     [...new Set(this.tasks.map((t) => t.project).filter((p) => p !== ""))].sort(),
@@ -154,6 +157,14 @@ class BoardStore {
     this.tasks = data.tasks;
     this.plans = data.plans;
     this.loading = false;
+  }
+
+  async pollActivity(): Promise<void> {
+    const { data, error } = await api.activity.get();
+    if (error) return;
+    const next: Record<string, AgentSessionInfo> = {};
+    for (const session of data.sessions) next[session.taskId] = session;
+    this.activity = next;
   }
 
   async addTask(laneId: string, title: string, project = this.projectFilter, parentId?: string): Promise<boolean> {

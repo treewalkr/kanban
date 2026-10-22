@@ -42,6 +42,16 @@
     };
   });
 
+  // agent sessions run for minutes without touching the db, so poll for them
+  $effect(() => {
+    const poll = () => {
+      if (!document.hidden) board.pollActivity();
+    };
+    poll();
+    const timer = setInterval(poll, 2000);
+    return () => clearInterval(timer);
+  });
+
   // after a search jump's modal closes, scroll the card into view and flash it
   $effect(() => {
     const id = board.flashId;

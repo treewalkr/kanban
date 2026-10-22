@@ -30,6 +30,15 @@
   // subtasks cannot have children — hide the composer one level above that
   let canAddSubtasks = $derived(ancestors.length < 2);
 
+  // live agent session on this card (badge's big sibling: the streamed log)
+  let live = $derived(board.activity[me.id]);
+  let logEl = $state<HTMLElement | null>(null);
+
+  $effect(() => {
+    void live?.log.length; // re-run as lines arrive
+    if (logEl) logEl.scrollTop = logEl.scrollHeight;
+  });
+
   let laneIndex = $derived(Math.max(0, board.lanes.findIndex((l) => l.id === me.laneId)));
   let laneName = $derived(board.lanes[laneIndex]?.name ?? me.laneId);
   let subtaskTitle = $state("");
@@ -128,6 +137,18 @@
           </summary>
           <div class="detail-note md">{@html renderMarkdown(plan.content)}</div>
         </details>
+      {/if}
+      {#if live}
+        <div class="detail-activity">
+          <div class="children-head">
+            {live.role === "reviewer" ? "pi-reviewer" : "pi-builder"} · live · {timeAgo(live.startedAt)}
+          </div>
+          <div class="activity-log" bind:this={logEl}>
+            {#each live.log as line, i (i)}
+              <div class="line">{line}</div>
+            {/each}
+          </div>
+        </div>
       {/if}
       <div class="detail-comments">
         <div class="children-head">thread · {comments.length}</div>
