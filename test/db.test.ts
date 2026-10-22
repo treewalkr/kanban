@@ -45,6 +45,16 @@ test("agentConfig: null → set → roundtrip → replace; unknown role rejected
   expect(() => db.setAgentConfig("worker", {})).toThrow(KanbanError);
 });
 
+test("attachments(kind) returns every version oldest-first", () => {
+  const task = db.createTask({ title: "one" });
+  db.attach(task.id, "session", "first session", "autoreview");
+  db.attach(task.id, "session", "second session", "autoreview");
+  const logs = db.attachments(task.id, "session");
+  expect(logs.map((l) => l.version)).toEqual([1, 2]);
+  expect(logs.map((l) => l.content)).toEqual(["first session", "second session"]);
+  expect(db.attachment(task.id, "session")!.content).toBe("second session"); // latest still works
+});
+
 test("seeds the default workflow lanes in order", () => {
   const lanes = db.lanes();
   expect(lanes.map((l) => l.id)).toEqual(DEFAULT_LANES.map((l) => l.id));

@@ -183,6 +183,25 @@ test("GET/PUT /agents roundtrip; bad role, unknown key, bad values 422", async (
   expect(await cleared.json()).toEqual({});
 });
 
+test("GET /tasks/:id/sessions lists saved agent logs oldest-first", async () => {
+  const app = createApp(db);
+  const task = db.createTask({ title: "one" });
+
+  const empty = await app.handle(new Request(`http://localhost/tasks/${task.id}/sessions`));
+  expect(empty.status).toBe(200);
+  expect(await empty.json()).toEqual([]);
+
+  db.attach(task.id, "session", "pi-reviewer · now · 5s\nline one", "autoreview");
+  db.attach(task.id, "session", "pi-builder · now · 3s\nline two", "autoreview");
+  const got = await app.handle(new Request(`http://localhost/tasks/${task.id}/sessions`));
+  const logs = (await got.json()) as Array<{ version: number; content: string }>;
+  expect(logs.map((l) => l.version)).toEqual([1, 2]);
+  expect(logs[0]!.content).toContain("pi-reviewer");
+
+  const noTask = await app.handle(new Request("http://localhost/tasks/zzzzz/sessions"));
+  expect(noTask.status).toBe(404);
+});
+
 test("GET /activity lists in-flight agent sessions (none when idle)", async () => {
   const app = createApp(db);
   const res = await app.handle(new Request("http://localhost/activity"));

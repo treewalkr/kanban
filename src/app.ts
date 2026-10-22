@@ -121,7 +121,18 @@ export const createApp = (db: KanbanDb) => {
         try {
           return db.comments(params.id);
         } catch (e) {
-          return fail(e, status);
+          return fail<Comment[]>(e, status);
+        }
+      },
+      { params: t.Object({ id: t.String() }) },
+    )
+    .get(
+      "/tasks/:id/sessions",
+      ({ params, status }): Attachment[] => {
+        try {
+          return db.attachments(params.id, "session");
+        } catch (e) {
+          return fail<Attachment[]>(e, status);
         }
       },
       { params: t.Object({ id: t.String() }) },

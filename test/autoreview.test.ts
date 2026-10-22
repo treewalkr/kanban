@@ -371,6 +371,32 @@ describe("auto-review", () => {
     expect(formatPiEvent(`{"type":"tool_execution_start","toolName":"bash","args":{"command":"${long}"}}`)!.length).toBeLessThanOrEqual(220);
   });
 
+  test("finished sessions save their log on the card; silent ones save nothing", async () => {
+    const { dbFile, writer: w } = setup();
+    const card = cardInReview(w);
+    let talkative = true;
+    const spawnFn: SpawnFn = (_job, context) => {
+      if (talkative) {
+        context.emit("session started");
+        context.emit("→ bash: bun test");
+      }
+      return Promise.resolve(talkative ? 0 : 1);
+    };
+    start(spawnFn, dbFile);
+    await sleep(20);
+    const logs = db!.attachments(card.id, "session");
+    expect(logs.length).toBe(1);
+    expect(logs[0]!.source).toBe("autoreview");
+    expect(logs[0]!.content).toContain("pi-reviewer"); // header names the role
+    expect(logs[0]!.content).toContain("→ bash: bun test");
+
+    // a silent session (nothing emitted) attaches nothing
+    talkative = false;
+    w.createComment(card.id, { author: "user", body: "re-arm" }); // any comment re-arms review
+    await sleep(200);
+    expect(db!.attachments(card.id, "session").length).toBe(1);
+  });
+
   test("activity registry: session lists with emitted lines, clears when the job ends", async () => {
     const { dbFile, writer: w } = setup();
     const card = cardInReview(w);

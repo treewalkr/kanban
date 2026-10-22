@@ -288,6 +288,16 @@ export function startAutoReview(opts: AutoReviewOptions): { stop(): void } {
           log(`${job.role} ${job.task.id}: spawn error ${(err as Error).message}`);
           code = 1;
         } finally {
+          // keep the transcript on the card — the live view evaporates when the session ends
+          if (session.log.length > 0) {
+            const secs = Math.max(1, Math.round((Date.now() - session.startedAt) / 1000));
+            const header = `${job.role === "reviewer" ? REVIEWER_AUTHOR : BUILDER_AUTHOR} · ${new Date(session.startedAt).toLocaleString()} · ${secs}s`;
+            try {
+              db.attach(job.task.id, "session", `${header}\n${session.log.join("\n")}`, "autoreview");
+            } catch (err) {
+              log(`${job.role} ${job.task.id}: could not save the session log (${(err as Error).message})`);
+            }
+          }
           sessions.delete(job.task.id);
         }
         inFlight.delete(job.task.id);

@@ -1060,6 +1060,30 @@ button.id-copy {
   gap: 2px;
 }
 
+.session-log {
+  margin-top: 6px;
+}
+
+.session-log > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  list-style: none;
+}
+
+.session-log > summary::before {
+  content: "▸ ";
+}
+
+.session-log[open] > summary::before {
+  content: "▾ ";
+}
+
+.session-log[open] {
+  padding-bottom: 4px;
+}
+
 .editor-actions {
   display: flex;
   align-items: center;

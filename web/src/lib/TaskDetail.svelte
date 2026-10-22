@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Comment, Task } from "../../../src/db";
+  import type { Attachment, Comment, Task } from "../../../src/db";
   import { api } from "../api";
   import { board } from "./board.svelte";
   import IdChip from "./IdChip.svelte";
@@ -69,9 +69,15 @@
   let comments = $state<Comment[]>([]);
   let commentBody = $state("");
 
+  // finished agent sessions saved on the card (live one renders above these)
+  let sessionLogs = $state<Attachment[]>([]);
+
   $effect(() => {
     api.tasks({ id: task.id }).comments.get().then(({ data, error }) => {
       if (!error) comments = data;
+    });
+    api.tasks({ id: task.id }).sessions.get().then(({ data, error }) => {
+      if (!error) sessionLogs = data;
     });
   });
 
@@ -149,6 +155,26 @@
             {/each}
           </div>
         </div>
+      {/if}
+      {#if sessionLogs.length > 0}
+        <details class="detail-plan agent-sessions">
+          <summary>
+            agent sessions · {sessionLogs.length}
+            <span class="plan-meta">transcripts kept on the card</span>
+          </summary>
+          {#each sessionLogs as log, i (log.id)}
+            <details class="session-log" open={i === sessionLogs.length - 1}>
+              <summary>
+                <span class="plan-meta">{log.content.split("\n")[0]}</span>
+              </summary>
+              <div class="activity-log">
+                {#each log.content.split("\n").slice(1) as line, j (j)}
+                  <div class="line">{line}</div>
+                {/each}
+              </div>
+            </details>
+          {/each}
+        </details>
       {/if}
       <div class="detail-comments">
         <div class="children-head">thread · {comments.length}</div>

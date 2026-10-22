@@ -556,6 +556,15 @@ export class KanbanDb {
     return row ? rowToAttachment(row) : null;
   }
 
+  /** Every version of `kind` on a card, oldest first — e.g. the session-log history. */
+  attachments(taskRef: string, kind: string): Attachment[] {
+    const task = this.resolveTask(taskRef);
+    return (
+      this.q("SELECT * FROM attachments WHERE card_id = ? AND kind = ? ORDER BY version ASC").all(task.id, kind) as
+        AttachmentRow[]
+    ).map(rowToAttachment);
+  }
+
   latestPlan(taskRef: string): Attachment | null {
     return this.attachment(this.resolveTask(taskRef).id, "plan");
   }
