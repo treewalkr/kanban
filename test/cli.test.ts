@@ -262,13 +262,17 @@ test("handoff moves + records; review --approve/--block with findings", async ()
 
   const strayFinding = await cli("review", task.id, "--approve", "--finding", "x");
   expect(strayFinding.code).toBe(1);
-  expect(strayFinding.stderr).toContain("--finding is only valid with --block");
+  expect(strayFinding.stderr).toContain("--finding is only valid with 'review --block'");
 
   const handoffFinding = await cli("handoff", task.id, "review", "--message", "m", "--finding", "x");
   expect(handoffFinding.code).toBe(1);
   expect(handoffFinding.stderr).toContain("--finding is only valid with 'review --block'");
   const unmoved = JSON.parse((await cli("show", task.id, "--json")).stdout) as Task;
   expect(unmoved.laneId).toBe("implement");
+
+  const serveFinding = await cli("serve", "--finding", "x");
+  expect(serveFinding.code).toBe(1);
+  expect(serveFinding.stderr).toContain("--finding is only valid with 'review --block'");
 
   await cli("rm", task.id, "--json");
 });

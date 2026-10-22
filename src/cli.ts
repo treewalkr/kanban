@@ -116,8 +116,12 @@ async function main(): Promise<number> {
     return 0;
   }
 
+  const { flags, positional } = parse(rest);
+  if (flags.finding !== undefined && cmd !== "review") {
+    throw new KanbanError("--finding is only valid with 'review --block'", "invalid");
+  }
+
   if (cmd === "serve") {
-    const { flags } = parse(rest);
     const port = Number(str(flags, "port") ?? process.env.PORT ?? 4600);
     if (flags.open) setTimeout(() => Bun.spawn(["open", `http://127.0.0.1:${port}`]), 800);
     const proc = Bun.spawn({
@@ -131,10 +135,6 @@ async function main(): Promise<number> {
 
   const db = new KanbanDb(defaultDbPath());
   try {
-    const { flags, positional } = parse(rest);
-    if (flags.finding !== undefined && cmd !== "review") {
-      throw new KanbanError("--finding is only valid with 'review --block'", "invalid");
-    }
     const json = !!flags.json;
     const project = str(flags, "project");
 
@@ -257,7 +257,7 @@ async function main(): Promise<number> {
         }
         if (block && !message) throw new KanbanError("--block needs --message <text>", "invalid");
         const findings = arr(flags, "finding");
-        if (!block && findings.length > 0) throw new KanbanError("--finding is only valid with --block", "invalid");
+        if (!block && findings.length > 0) throw new KanbanError("--finding is only valid with 'review --block'", "invalid");
         const result = approve
           ? db.handoff(idRef, laneById(db, "done"), { message: message ?? "approved", author: str(flags, "author"), kind: "review" })
           : db.handoff(idRef, laneById(db, "implement"), { message: message!, author: str(flags, "author"), kind: "review", findings });
