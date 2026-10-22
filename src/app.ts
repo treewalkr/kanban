@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { KanbanDb, KanbanError, defaultDbPath, type AgentConfig, type Attachment, type Board, type Comment, type Lane, type Task } from "./db";
+import { listPiModels } from "./models";
 
 const errorStatus = { "not-found": 404, conflict: 409, invalid: 400 } as const;
 
@@ -240,6 +241,9 @@ export const createApp = (db: KanbanDb) => {
     .get("/agents", (): { reviewer: AgentConfig | null; builder: AgentConfig | null } => ({
       reviewer: db.agentConfig("reviewer"),
       builder: db.agentConfig("builder"),
+    }))
+    .get("/pi-models", async (): Promise<{ models: Awaited<ReturnType<typeof listPiModels>> }> => ({
+      models: await listPiModels(),
     }))
     .put(
       "/agents/:role",

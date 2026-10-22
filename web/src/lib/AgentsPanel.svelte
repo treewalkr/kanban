@@ -39,6 +39,18 @@
   let form = $state<AgentForm>(toForm(agents.reviewer));
   let saving = $state(false);
 
+  let providers = $derived([...new Set(agents.models.map((m) => m.provider))].sort());
+  let modelGroups = $derived.by(() => {
+    const forProvider = form.provider ? agents.models.filter((m) => m.provider === form.provider) : agents.models;
+    const groups = new Map<string, Array<{ id: string; label: string }>>();
+    for (const m of forProvider) {
+      const list = groups.get(m.provider) ?? [];
+      list.push({ id: m.id, label: `${m.id} · ${m.context}${m.thinking ? " · thinks" : ""}` });
+      groups.set(m.provider, list);
+    }
+    return [...groups.entries()];
+  });
+
   // tab switch stashes edits in the store so the other role's form can load
   function switchRole(next: AgentRole): void {
     if (next === role) return;
@@ -74,16 +86,56 @@
       <button class:active={role === "reviewer"} onclick={() => switchRole("reviewer")}>reviewer</button>
       <button class:active={role === "builder"} onclick={() => switchRole("builder")}>builder</button>
     </div>
-    <div class="row">
-      <label>
-        provider
-        <input bind:value={form.provider} placeholder="pi default (e.g. anthropic)" />
-      </label>
-      <label>
-        model
-        <input bind:value={form.model} placeholder="pi default" />
-      </label>
-    </div>
+    {#if agents.models.length > 0}
+      <div class="row">
+        <label>
+          provider
+          <select bind:value={form.provider}>
+            <option value="">pi default</option>
+            {#each providers as p (p)}
+              <option value={p}>{p}</option>
+            {/each}
+            {#if form.provider && !providers.includes(form.provider)}
+              <option value={form.provider}>{form.provider} · custom</option>
+            {/if}
+          </select>
+        </label>
+        <label>
+          model
+          <select
+            bind:value={form.model}
+            onchange={(e) => {
+              const id = (e.currentTarget as HTMLSelectElement).value;
+              const hit = agents.models.find((m) => m.id === id && (!form.provider || m.provider === form.provider));
+              if (hit) form.provider = hit.provider;
+            }}
+          >
+            <option value="">pi default</option>
+            {#each modelGroups as [provider, ms] (provider)}
+              <optgroup label={provider}>
+                {#each ms as m (m.id)}
+                  <option value={m.id}>{m.label}</option>
+                {/each}
+              </optgroup>
+            {/each}
+            {#if form.model && !agents.models.some((m) => m.id === form.model)}
+              <option value={form.model}>{form.model} · custom</option>
+            {/if}
+          </select>
+        </label>
+      </div>
+    {:else}
+      <div class="row">
+        <label>
+          provider
+          <input bind:value={form.provider} placeholder="pi default (e.g. anthropic)" />
+        </label>
+        <label>
+          model
+          <input bind:value={form.model} placeholder="pi default" />
+        </label>
+      </div>
+    {/if}
     <div class="row">
       <label>
         thinking

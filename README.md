@@ -71,7 +71,7 @@ without restarting serve:
 
 | field | becomes | notes |
 | --- | --- | --- |
-| provider / model | `--provider` / `--model` | empty = pi's default |
+| provider / model | `--provider` / `--model` | selects fed by pi's catalog (`pi --list-models`); empty = pi's default |
 | thinking | `--thinking` | reviewer defaults to `max`, builder to pi's default |
 | skills | `--skill` per line | e.g. `~/.pi/agent/skills/scrutinize` |
 | context | `--append-system-prompt` | standing instructions, your review lens |

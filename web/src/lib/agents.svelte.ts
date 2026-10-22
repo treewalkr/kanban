@@ -1,5 +1,6 @@
 import { api } from "../api";
 import type { AgentConfig, AgentRole } from "../../../src/db";
+import type { CatalogModel } from "../../../src/models";
 import { board } from "./board.svelte";
 
 type EdenError = { value?: unknown };
@@ -10,6 +11,8 @@ class AgentsStore {
   loaded = $state(false);
   reviewer = $state<AgentConfig>({});
   builder = $state<AgentConfig>({});
+  /** pi's catalog for the provider/model selects; empty → the panel falls back to text inputs. */
+  models = $state<CatalogModel[]>([]);
 
   private fail(error: EdenError): void {
     const value = error.value as { error?: string } | undefined;
@@ -17,11 +20,14 @@ class AgentsStore {
   }
 
   async load(): Promise<void> {
-    const { data, error } = await api.agents.get();
-    if (error) return this.fail(error);
-    this.reviewer = data.reviewer ?? {};
-    this.builder = data.builder ?? {};
-    this.loaded = true;
+    const [agents, models] = await Promise.all([api.agents.get(), api["pi-models"].get()]);
+    if (agents.error) this.fail(agents.error);
+    else {
+      this.reviewer = agents.data.reviewer ?? {};
+      this.builder = agents.data.builder ?? {};
+      this.loaded = true;
+    }
+    if (!models.error) this.models = models.data.models;
   }
 
   async save(role: AgentRole, config: AgentConfig): Promise<boolean> {
