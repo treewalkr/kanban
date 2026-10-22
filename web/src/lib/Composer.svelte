@@ -14,7 +14,7 @@
   async function submit() {
     const title = value.trim();
     if (!title) return onclose();
-    await board.addTask(lane.id, title);
+    if (!(await board.addTask(lane.id, title))) return; // keep the text so a failed post isn't lost
     value = "";
     el.focus();
   }

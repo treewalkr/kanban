@@ -52,8 +52,7 @@
   async function addSubtask() {
     const title = subtaskTitle.trim();
     if (!title) return;
-    subtaskTitle = "";
-    await board.addTask(me.laneId, title, undefined, task.id);
+    if (await board.addTask(me.laneId, title, undefined, task.id)) subtaskTitle = "";
   }
 
   // per-card thread state: fetch on open, append after own post — SSE refresh
@@ -70,9 +69,10 @@
   async function addComment() {
     const body = commentBody.trim();
     if (!body) return;
-    commentBody = "";
     const { data, error } = await api.tasks({ id: task.id }).comments.post({ body });
-    if (!error) comments.push(data);
+    if (error) return; // keep the text so a failed post isn't lost
+    comments.push(data);
+    commentBody = "";
   }
 </script>
 

@@ -156,10 +156,14 @@ class BoardStore {
     this.loading = false;
   }
 
-  async addTask(laneId: string, title: string, project = this.projectFilter, parentId?: string): Promise<void> {
+  async addTask(laneId: string, title: string, project = this.projectFilter, parentId?: string): Promise<boolean> {
     const { error } = await api.tasks.post({ title, lane: laneId, project: project || undefined, parent: parentId });
-    if (error) return this.fail(error);
+    if (error) {
+      this.fail(error);
+      return false;
+    }
     await this.refresh();
+    return true;
   }
 
   async updateTask(id: string, patch: TaskPatch): Promise<void> {
