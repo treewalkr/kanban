@@ -25,7 +25,9 @@ For every non-trivial unit of work:
 - **Before starting**: ensure a card exists and sits in the lane matching what
   you're about to do (`add` → `mv plan` when planning, `mv implement` when coding).
 - **As you progress**: advance the card (`mv implement`, then `mv review` when
-  the work looks complete).
+  the work looks complete). When you start Implement, attach your plan:
+  write it to a file and `kanban attach <id> <plan-file>` — re-attaching a
+  revised plan versions it (latest wins).
 - **After acceptance**: `mv done` (or `done <id>`).
 - **When a finished card is worth keeping but Done is getting crowded**:
   `archive <id>`. Undo with `mv <id> <lane>`.
@@ -37,8 +39,9 @@ For every non-trivial unit of work:
 ```
 kanban add <title…> [--note <text>] [--lane <ref>] [--project <tag>] [--parent <id>] [--top]  # new card (Backlog by default; --parent nests it)
 kanban ls [lane] [--project <tag>] [--json]                           # board overview / one lane (children indented)
-kanban search <query…> [--project <tag>] [--json]                     # ranked matches: titles, checklist lines, notes
-kanban show <id>                                                      # full detail incl. note, parent, subtasks
+kanban search <query…> [--project <tag>] [--json]                     # ranked matches: titles, checklist lines, notes, plans
+kanban show <id>                                                      # full detail incl. note, plan, parent, subtasks
+kanban attach <id> <plan-file>                                        # attach/version a plan; show prints the latest
 kanban mv <id> <lane> [--pos <1-based>]                               # move / reorder
 kanban mv <id> --next | --prev                                        # advance / pull back one lane
 kanban edit <id> [--title <t>] [--note <text>] [--project <tag>] [--lane <ref>] [--parent <id>] [--clear-note] [--clear-parent]
@@ -74,6 +77,11 @@ kanban help | version                                                 # CLI help
   `n=$(cat <<'EOF' … EOF); kanban edit <id> --note "$n"`.
 - **`lane rm --force`** deletes the lane *and every card in it* — it does not
   relocate them. Move cards out first unless you mean to drop them.
+- **Plans**: `kanban attach <id> <plan-file>` stores the file's text on the
+  card (source path kept as metadata); attach again to version it. `show <id>`
+  prints the latest plan, and the web UI shows it as a collapsed markdown
+  section in the card detail — the plan lives on the card, not in a scratch
+  file. Search matches plan text too.
 - **`--json`**: append to any command for machine-readable output; on error the
   CLI exits 1 and prints `kanban: <message>` to stderr.
 - The web UI edits the same database and receives pushed updates (SSE), so
