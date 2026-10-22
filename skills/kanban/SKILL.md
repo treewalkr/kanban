@@ -24,10 +24,18 @@ For every non-trivial unit of work:
 
 - **Before starting**: ensure a card exists and sits in the lane matching what
   you're about to do (`add` → `mv plan` when planning, `mv implement` when coding).
+- **Pickup**: run `kanban brief <id>` before starting work on a card — note,
+  latest plan, and full thread in one read.
 - **As you progress**: advance the card (`mv implement`, then `mv review` when
   the work looks complete). When you start Implement, attach your plan:
   write it to a file and `kanban attach <id> <plan-file>` — re-attaching a
   revised plan versions it (latest wins).
+- **Put-down**: `kanban handoff <id> <lane> --message <what you did · what's
+  next> --author pi` when stopping or passing the card on — never a bare `mv`
+  between actors; the message is the durable record.
+- **Review**: `review --approve` (→ Done) or `review --block --message …
+  --finding …` (→ Implement); findings land as `- [ ]` checklist lines on the
+  note that the builder works through.
 - **After acceptance**: `mv done` (or `done <id>`).
 - **When a finished card is worth keeping but Done is getting crowded**:
   `archive <id>`. Undo with `mv <id> <lane>`.
@@ -42,6 +50,11 @@ kanban ls [lane] [--project <tag>] [--json]                           # board ov
 kanban search <query…> [--project <tag>] [--json]                     # ranked matches: titles, checklist lines, notes, plans
 kanban show <id>                                                      # full detail incl. note, plan, parent, subtasks
 kanban attach <id> <plan-file>                                        # attach/version a plan; show prints the latest
+kanban comment <id> <text…> [--author <name>] [--kind <comment|review|handoff>]  # append to the card's thread
+kanban comments <id>                                                  # read the thread, oldest first
+kanban handoff <id> <lane> --message <text> [--author <name>]         # atomic move + thread record (the baton pass)
+kanban review <id> (--approve | --block --message <text> [--finding <text>]…)  # approve → Done; block → Implement + findings
+kanban brief <id>                                                     # full pickup context: note, latest plan, thread
 kanban mv <id> <lane> [--pos <1-based>]                               # move / reorder
 kanban mv <id> --next | --prev                                        # advance / pull back one lane
 kanban edit <id> [--title <t>] [--note <text>] [--project <tag>] [--lane <ref>] [--parent <id>] [--clear-note] [--clear-parent]
@@ -82,6 +95,10 @@ kanban help | version                                                 # CLI help
   prints the latest plan, and the web UI shows it as a collapsed markdown
   section in the card detail — the plan lives on the card, not in a scratch
   file. Search matches plan text too.
+- **Threads**: every card carries a comment thread — the card *is* the forum.
+  Kinds: `comment` (default), `review`, `handoff`. `--author` names the writer:
+  agents pass their name (`--author pi`), humans and the web UI default to
+  `user`. The web card detail shows the thread live.
 - **`--json`**: append to any command for machine-readable output; on error the
   CLI exits 1 and prints `kanban: <message>` to stderr.
 - The web UI edits the same database and receives pushed updates (SSE), so
