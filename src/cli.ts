@@ -19,6 +19,7 @@ usage:
   kanban comments <id>
   kanban handoff <id> <lane> --message <text> [--author <name>]   (atomic move + thread record)
   kanban review <id> (--approve | --block --message <text> [--finding <text>]…)
+  kanban brief <id>                         (pickup context: note, plan, thread)
   kanban mv <id> <lane> [--pos <1-based>]     kanban mv <id> --next | --prev
   kanban edit <id> [--title <t>] [--note <text>] [--project <tag>] [--lane <ref>]
                           [--parent <id>] [--clear-note] [--clear-parent]
@@ -32,7 +33,8 @@ usage:
 lane refs: slug (backlog), prefix (imp), name prefix (Rev), or ordinal (1..n)
 task ids: any unique prefix works. add --json for machine-readable output.
 search: ranks titles, checklist lines, note text, then plans — same results as the web dropdown.
-hierarchy: --parent nests a card (epic → story → subtask, max depth 3).`;
+hierarchy: --parent nests a card (epic → story → subtask, max depth 3).
+threads: comment/handoff/review append to the card thread; brief prints full pickup context.`;
 
 interface Parsed {
   flags: Record<string, string | true | string[]>;
@@ -179,6 +181,15 @@ async function main(): Promise<number> {
         const task = db.resolveTask(positional[0] ?? "");
         if (json) jsonOut(task);
         else console.log(taskDetail(db, task));
+        return 0;
+      }
+
+      case "brief": {
+        const idRef = positional[0];
+        if (!idRef) throw new KanbanError("usage: kanban brief <id>", "invalid");
+        const task = db.resolveTask(idRef);
+        if (json) jsonOut({ task, plan: db.attachment(task.id, "plan"), comments: db.comments(task.id) });
+        else console.log(taskDetail(db, task)); // thread-aware: note, plan, and comments in one read
         return 0;
       }
 

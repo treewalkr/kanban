@@ -267,6 +267,36 @@ test("handoff moves + records; review --approve/--block with findings", async ()
   await cli("rm", task.id, "--json");
 });
 
+test("brief prints pickup context: note, plan, and thread", async () => {
+  const task = JSON.parse((await cli("add", "briefed card", "--lane", "implement", "--json")).stdout) as Task;
+  await cli("edit", task.id, "--note", "the note body");
+
+  const planFile = join(dir, "brief-plan.md");
+  await Bun.write(planFile, "# the attached plan");
+  await cli("attach", task.id, planFile);
+  await cli("comment", task.id, "prior session found the flux capacitor", "--author", "pi-builder");
+
+  const asJson = JSON.parse((await cli("brief", task.id, "--json")).stdout) as {
+    task: Task;
+    plan: { content: string };
+    comments: Array<{ body: string }>;
+  };
+  expect(asJson.task.id).toBe(task.id);
+  expect(asJson.plan?.content).toBe("# the attached plan");
+  expect(asJson.comments.map((m) => m.body)).toContain("prior session found the flux capacitor");
+
+  const human = await cli("brief", task.id);
+  expect(human.stdout).toContain("the note body");
+  expect(human.stdout).toContain("the attached plan");
+  expect(human.stdout).toContain("prior session found the flux capacitor");
+
+  const usage = await cli("brief");
+  expect(usage.code).toBe(1);
+  expect(usage.stderr).toContain("usage: kanban brief");
+
+  await cli("rm", task.id, "--json");
+});
+
 test("search ranks titles, checklists and notes; --project scopes; empty query fails", async () => {
   await cli(
     "add", "flux capacitor search", "--project", "delorean",
