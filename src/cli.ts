@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { KanbanDb, KanbanError, defaultDbPath, type Task, type TaskPatch } from "./db";
-import { laneList, listLanes, searchResults, taskDetail, taskLine } from "./render";
+import { c, laneList, listLanes, searchResults, taskDetail, taskLine } from "./render";
 import { searchBoard } from "./search";
 
 const VERSION = "0.2.0";
@@ -13,6 +14,7 @@ usage:
   kanban ls [lane] [--project <tag>] [--json]
   kanban search <query…> [--project <tag>] [--json]
   kanban show <id>
+  kanban attach <id> <plan-file>            (re-attach versions; show prints the latest)
   kanban mv <id> <lane> [--pos <1-based>]     kanban mv <id> --next | --prev
   kanban edit <id> [--title <t>] [--note <text>] [--project <tag>] [--lane <ref>]
                           [--parent <id>] [--clear-note] [--clear-parent]
@@ -25,7 +27,7 @@ usage:
 
 lane refs: slug (backlog), prefix (imp), name prefix (Rev), or ordinal (1..n)
 task ids: any unique prefix works. add --json for machine-readable output.
-search: ranks titles, checklist lines, then note text — same results as the web dropdown.
+search: ranks titles, checklist lines, note text, then plans — same results as the web dropdown.
 hierarchy: --parent nests a card (epic → story → subtask, max depth 3).`;
 
 interface Parsed {
@@ -161,6 +163,21 @@ async function main(): Promise<number> {
         const task = db.resolveTask(positional[0] ?? "");
         if (json) jsonOut(task);
         else console.log(taskDetail(db, task));
+        return 0;
+      }
+
+      case "attach": {
+        const [idRef, file] = positional;
+        if (!idRef || !file) throw new KanbanError("usage: kanban attach <id> <plan-file>", "invalid");
+        let content: string;
+        try {
+          content = readFileSync(file, "utf8");
+        } catch (err) {
+          throw new KanbanError(`cannot read plan file '${file}': ${(err as Error).message}`, "invalid");
+        }
+        const plan = db.attach(idRef, "plan", content, file);
+        if (json) jsonOut(plan);
+        else console.log(`${c.green("✓")} attached plan ${c.dim(`v${plan.version}`)} to ${c.dim(plan.taskId)}`);
         return 0;
       }
 

@@ -154,6 +154,35 @@ test("edit --parent reparents and --clear-parent detaches", async () => {
   await cli("rm", b.id);
 });
 
+test("attach versions a plan file; show prints the latest; bad file fails", async () => {
+  const added = await cli("add", "planned work", "--lane", "plan", "--json");
+  const task = JSON.parse(added.stdout) as Task;
+
+  const planFile = join(dir, "plan.md");
+  await Bun.write(planFile, "# plan v1\nuse the flux capacitor");
+  const first = await cli("attach", task.id, planFile, "--json");
+  expect(first.code).toBe(0);
+  expect(JSON.parse(first.stdout)).toMatchObject({ version: 1, content: "# plan v1\nuse the flux capacitor", source: planFile });
+
+  await Bun.write(planFile, "# plan v2\nuse the mr fusion");
+  await cli("attach", task.id, planFile);
+  const show = await cli("show", task.id);
+  expect(show.stdout).toContain("plan:");
+  expect(show.stdout).toContain("v2");
+  expect(show.stdout).toContain("use the mr fusion");
+  expect(show.stdout).not.toContain("use the flux capacitor"); // latest only
+
+  const badFile = await cli("attach", task.id, join(dir, "nope.md"));
+  expect(badFile.code).toBe(1);
+  expect(badFile.stderr).toContain("cannot read plan file");
+
+  const usage = await cli("attach", task.id);
+  expect(usage.code).toBe(1);
+  expect(usage.stderr).toContain("usage: kanban attach");
+
+  await cli("rm", task.id, "--json");
+});
+
 test("search ranks titles, checklists and notes; --project scopes; empty query fails", async () => {
   await cli(
     "add", "flux capacitor search", "--project", "delorean",

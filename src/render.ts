@@ -88,7 +88,9 @@ export function searchResults(db: KanbanDb, query: string, results: SearchResult
         ? `${c.dim(r.checked ? "[x]" : "[ ]")} ${truncate(r.text, max - 4)}`
         : r.kind === "note"
           ? `${c.dim("note:")} ${truncate(r.text, max - 6)}`
-          : truncate(r.text, max);
+          : r.kind === "plan"
+            ? `${c.dim("plan:")} ${truncate(r.text, max - 6)}`
+            : truncate(r.text, max);
     const arrow = c.hex(laneColor(lanes.indexOf(lane!)), `→ ${lane?.name ?? r.task.laneId}`);
     out.push(`  ${c.dim(r.task.id)}  ${text}${chip}  ${arrow}`);
   }
@@ -114,6 +116,12 @@ export function taskDetail(db: KanbanDb, task: Task): string {
   if (task.note) {
     out.push(c.dim("note:"));
     for (const line of task.note.split("\n")) out.push(`  ${line}`);
+  }
+  const plan = db.latestPlan(task.id);
+  if (plan) {
+    const meta = [`v${plan.version}`, plan.source, new Date(plan.createdAt).toLocaleString()].filter(Boolean).join(" · ");
+    out.push(`${c.dim("plan:")} ${c.dim(meta)}`);
+    for (const line of plan.content.split("\n")) out.push(`  ${line}`);
   }
   const children = db.childrenOf(task.id);
   if (children.length > 0) {
