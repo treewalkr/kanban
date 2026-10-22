@@ -1365,6 +1365,110 @@ button.id-copy {
   line-height: 1.5;
 }
 
+/* ---------- code syntax highlighting (github dark/light palettes) ---------- */
+
+:root,
+[data-theme="dark"] {
+  --hl-comment: #8b949e;
+  --hl-keyword: #ff7b72;
+  --hl-string: #a5d6ff;
+  --hl-regexp: #7ee787;
+  --hl-number: #79c0ff;
+  --hl-function: #d2a8ff;
+  --hl-attr: #79c0ff;
+  --hl-type: #ffa657;
+  --hl-tag: #7ee787;
+  --hl-meta: #79c0ff;
+}
+
+[data-theme="light"] {
+  --hl-comment: #59636e;
+  --hl-keyword: #cf222e;
+  --hl-string: #0a3069;
+  --hl-regexp: #116329;
+  --hl-number: #0550ae;
+  --hl-function: #8250df;
+  --hl-attr: #0550ae;
+  --hl-type: #953800;
+  --hl-tag: #116329;
+  --hl-meta: #0550ae;
+}
+
+.md .hljs-comment,
+.md .hljs-quote,
+.md .hljs-doctag {
+  color: var(--hl-comment);
+  font-style: italic;
+}
+
+.md .hljs-keyword,
+.md .hljs-selector-tag,
+.md .hljs-meta-keyword {
+  color: var(--hl-keyword);
+}
+
+.md .hljs-string,
+.md .hljs-template-variable {
+  color: var(--hl-string);
+}
+
+.md .hljs-regexp,
+.md .hljs-addition {
+  color: var(--hl-regexp);
+}
+
+.md .hljs-addition {
+  background: color-mix(in srgb, var(--hl-regexp) 15%, transparent);
+}
+
+.md .hljs-deletion {
+  color: var(--hl-keyword);
+  background: color-mix(in srgb, var(--hl-keyword) 12%, transparent);
+}
+
+.md .hljs-number,
+.md .hljs-literal,
+.md .hljs-symbol {
+  color: var(--hl-number);
+}
+
+.md .hljs-title,
+.md .hljs-title.function_,
+.md .hljs-title.function_.invoke {
+  color: var(--hl-function);
+}
+
+.md .hljs-title.class_,
+.md .hljs-title.class_.inherited,
+.md .hljs-type,
+.md .hljs-built_in {
+  color: var(--hl-type);
+}
+
+.md .hljs-attr,
+.md .hljs-attribute,
+.md .hljs-property,
+.md .hljs-variable.language_ {
+  color: var(--hl-attr);
+}
+
+.md .hljs-meta {
+  color: var(--hl-meta);
+}
+
+.md .hljs-tag .hljs-name,
+.md .hljs-tag .hljs-tag {
+  color: var(--hl-tag);
+}
+
+.md .hljs-strong {
+  font-weight: 600;
+}
+
+.md .hljs-emphasis {
+  font-style: italic;
+}
+
 .md a {
   color: var(--accent);
 }
