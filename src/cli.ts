@@ -132,6 +132,9 @@ async function main(): Promise<number> {
   const db = new KanbanDb(defaultDbPath());
   try {
     const { flags, positional } = parse(rest);
+    if (flags.finding !== undefined && cmd !== "review") {
+      throw new KanbanError("--finding is only valid with 'review --block'", "invalid");
+    }
     const json = !!flags.json;
     const project = str(flags, "project");
 
