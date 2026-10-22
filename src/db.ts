@@ -599,10 +599,9 @@ export class KanbanDb {
   ): { task: Task; comment: Comment } {
     const task = this.resolveTask(taskRef);
     const kind = input.kind ?? "handoff";
-    const findings = input.findings ?? [];
+    const findings = (input.findings ?? []).map((f) => f.trim()).filter(Boolean);
     return this.db.transaction((): { task: Task; comment: Comment } => {
-      const note =
-        findings.length > 0 ? `${task.note}\n${findings.map((f) => `- [ ] ${f.trim()}`).join("\n")}` : undefined;
+      const note = findings.length > 0 ? `${task.note}\n${findings.map((f) => `- [ ] ${f}`).join("\n")}` : undefined;
       const moved = this.updateTask(task.id, { ...(note !== undefined ? { note } : {}), lane: laneRef });
       const comment = this.createComment(task.id, { author: input.author, kind, body: input.message });
       return { task: moved, comment };

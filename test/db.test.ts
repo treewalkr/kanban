@@ -279,10 +279,22 @@ test("handoff moves the card and records a typed comment atomically", () => {
   expect(db.comments(a.id)).toHaveLength(1);
 });
 
-test("handoff findings append checklist lines to the note", () => {
+test("handoff findings append checklist lines to the note; blanks are dropped", () => {
   const a = db.createTask({ title: "a", lane: "review", note: "existing" });
   db.handoff(a.id, "implement", { message: "blocked", kind: "review", findings: ["Fix auth src/auth.ts:42", "Add test"] });
   expect(db.resolveTask(a.id).note).toBe("existing\n- [ ] Fix auth src/auth.ts:42\n- [ ] Add test");
+
+  const b = db.createTask({ title: "b", lane: "review", note: "original" });
+  db.handoff(b.id, "implement", {
+    message: "blocked again",
+    kind: "review",
+    findings: ["", "  ", "real finding", " trailing kept  "],
+  });
+  expect(db.resolveTask(b.id).note).toBe("original\n- [ ] real finding\n- [ ] trailing kept");
+
+  const c = db.createTask({ title: "c", lane: "review", note: "untouched" });
+  db.handoff(c.id, "implement", { message: "blocked, nothing useful", kind: "review", findings: ["", "   "] });
+  expect(db.resolveTask(c.id).note).toBe("untouched");
 });
 
 test("a bad handoff message rolls back the lane move and note append", () => {
