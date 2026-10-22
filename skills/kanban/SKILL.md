@@ -42,6 +42,25 @@ For every non-trivial unit of work:
 - **If work is abandoned or superseded**: delete the card (`rm`). Never leave
   stale cards behind — the board must reflect reality.
 
+## Auto-review loop
+
+When the board runs with `kanban serve --auto-review`, a separate pi reviewer
+watches the Review lane and code-reviews every card that arrives there — don't
+review your own work in that mode unless asked.
+
+- **Handing off to Review**: always `kanban handoff <id> review --message …
+  --author pi`. The reviewer only picks up a card whose last thread comment
+  isn't its own, so a bare `mv` into Review can sit unreviewed.
+- **If the review blocks** (`pi-reviewer` review comment, card back in
+  Test + Implement, `- [ ]` findings on the note): fix every finding, run the
+  tests, check findings off by rewriting the note (`kanban edit <id> --note`),
+  then `kanban handoff <id> review --message … --author pi-builder` — the
+  reviewer re-reviews automatically. After 3 block cycles it stops and leaves
+  the card for the user.
+- **Verdicts** are `review` comments from `pi-reviewer`; approve moves the
+  card to Done. If a review session failed, a comment says so — add any
+  comment to the card to re-arm it.
+
 ## Commands
 
 ```
@@ -62,7 +81,7 @@ kanban done <id>                                                      # shortcut
 kanban archive <id>                                                   # shortcut → Archive (undo: mv <id> <lane>)
 kanban rm <id> [--force]                                              # delete card (a parent needs --force; cascades)
 kanban lane ls | add <name> | rename <ref> <name> | rm <ref> [--force]  # manage lanes
-kanban serve [--port <n>] [--open]                                    # start web UI (default 127.0.0.1:4600)
+kanban serve [--port <n>] [--open] [--auto-review]                # start web UI (default 127.0.0.1:4600); --auto-review: pi auto-reviews Review-lane cards
 kanban help | version                                                 # CLI help / version
 ```
 
