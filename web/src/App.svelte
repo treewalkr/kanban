@@ -1,11 +1,13 @@
 <script lang="ts">
   import { board } from "./lib/board.svelte";
+  import { agents } from "./lib/agents.svelte";
   import { eventsUrl } from "./api";
   import LaneView from "./lib/Lane.svelte";
   import TaskDetail from "./lib/TaskDetail.svelte";
   import TaskEditor from "./lib/TaskEditor.svelte";
   import AddLane from "./lib/AddLane.svelte";
   import SearchBox from "./lib/SearchBox.svelte";
+  import AgentsPanel from "./lib/AgentsPanel.svelte";
 
   let theme = $state(document.documentElement.dataset.theme === "light" ? "light" : "dark");
 
@@ -72,6 +74,21 @@
       {/each}
     </div>
     <div class="meta">{board.activeCount} tasks</div>
+    <button
+      class="theme-toggle"
+      onclick={() => {
+        if (agents.open) {
+          agents.open = false;
+        } else {
+          void agents.load();
+          agents.open = true;
+        }
+      }}
+      aria-label="agent settings"
+      title="agent settings"
+    >
+      ⚙
+    </button>
     <button class="theme-toggle" onclick={toggleTheme} aria-label="toggle theme" title="toggle theme">
       {theme === "dark" ? "☀" : "☾"}
     </button>
@@ -97,6 +114,10 @@
         <TaskDetail />
       {/if}
     {/key}
+  {/if}
+
+  {#if agents.open}
+    <AgentsPanel />
   {/if}
 
   {#if board.error}
