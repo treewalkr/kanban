@@ -2,6 +2,7 @@
   import type { Task } from "../../../src/db";
   import { board } from "./board.svelte";
   import CardView from "./Card.svelte";
+  import IdChip from "./IdChip.svelte";
   import { renderMarkdown } from "./markdown";
   import { timeAgo } from "./util";
 
@@ -76,7 +77,7 @@
   </div>
   {#if task.note}<div class="card-note md">{@html renderMarkdown(task.note)}</div>{/if}
   <div class="card-meta">
-    <span class="id">{task.id}</span>
+    <IdChip id={task.id} />
     {#if task.project}<span class="chip">{task.project}</span>{/if}
     <span class="age" title={new Date(task.updatedAt).toLocaleString()}>{timeAgo(task.updatedAt)}</span>
   </div>

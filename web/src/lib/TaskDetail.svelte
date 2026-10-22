@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Task } from "../../../src/db";
   import { board } from "./board.svelte";
+  import IdChip from "./IdChip.svelte";
   import { renderMarkdown } from "./markdown";
   import { laneColor, timeAgo } from "./util";
 
@@ -121,7 +122,7 @@
       </form>
     {/if}
     <div class="editor-actions">
-      <span class="id">{me.id}</span>
+      <IdChip id={me.id} />
       <span class="spacer"></span>
       {#if me.laneId !== "done"}
         <button class="ghost" onclick={() => toLane("done")}>✓ done</button>

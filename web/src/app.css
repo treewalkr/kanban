@@ -562,6 +562,23 @@ button:focus-visible {
   color: var(--text-dim);
 }
 
+button.id-copy {
+  padding: 1px 4px;
+  border: 0;
+  background: none;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.id-copy:hover {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+
+.id-copy.copied {
+  color: var(--accent);
+}
+
 .chip {
   max-width: 130px;
   overflow: hidden;

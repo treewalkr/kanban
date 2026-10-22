@@ -2,6 +2,7 @@
   import type { Task } from "../../../src/db";
   import { board } from "./board.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import IdChip from "./IdChip.svelte";
 
   const source = board.editing!;
 
@@ -95,7 +96,7 @@
       </select>
     </label>
     <div class="editor-actions">
-      <span class="id">{source.id}</span>
+      <IdChip id={source.id} />
       <span class="spacer"></span>
       <button class="danger" onclick={() => (confirming = true)}>delete</button>
       <button class="primary" onclick={save} disabled={!title.trim()}>save</button>
