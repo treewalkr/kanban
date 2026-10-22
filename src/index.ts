@@ -2,6 +2,8 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import staticPlugin from "@elysiajs/static";
 import { app } from "./app";
+import { startAutoReview } from "./autoreview";
+import { KanbanDb, defaultDbPath } from "./db";
 
 const port = Number(process.env.PORT ?? 4600);
 const dist = join(import.meta.dir, "..", "web", "dist");
@@ -20,3 +22,13 @@ server.listen({ port, hostname: "127.0.0.1" });
 console.log(
   `kanban on http://127.0.0.1:${port}${existsSync(dist) ? "" : " (api only — run `bun run build` for the web ui)"}`,
 );
+
+if (process.env.KANBAN_AUTO_REVIEW === "1") {
+  // own connection, like the CLI — the reviewer/builder children talk to the
+  // board through the kanban CLI, never through this process
+  startAutoReview({
+    db: new KanbanDb(defaultDbPath()),
+    cwd: process.cwd(),
+    log: (message) => console.log(`[autoreview] ${message}`),
+  });
+}

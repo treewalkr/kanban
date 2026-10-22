@@ -27,14 +27,15 @@ usage:
   kanban archive <id>                        (undo: mv <id> <lane>)
   kanban rm <id> [--force]                   (deleting a parent needs --force)
   kanban lane ls | add <name> | rename <ref> <name> | rm <ref> [--force]
-  kanban serve [--port <n>] [--open]
+  kanban serve [--port <n>] [--open] [--auto-review]
   kanban help | version
 
 lane refs: slug (backlog), prefix (imp), name prefix (Rev), or ordinal (1..n)
 task ids: any unique prefix works. add --json for machine-readable output.
 search: ranks titles, checklist lines, note text, then plans — same results as the web dropdown.
 hierarchy: --parent nests a card (epic → story → subtask, max depth 3).
-threads: comment/handoff/review append to the card thread; brief prints full pickup context.`;
+threads: comment/handoff/review append to the card thread; brief prints full pickup context.
+auto-review: serve --auto-review spawns a pi reviewer for cards in Review (block → pi-builder works the findings, max 3 cycles).`;
 
 interface Parsed {
   flags: Record<string, string | true | string[]>;
@@ -42,7 +43,7 @@ interface Parsed {
 }
 
 const VALUE_FLAGS = new Set(["note", "lane", "project", "pos", "title", "port", "parent", "author", "kind", "message"]);
-const BOOL_FLAGS = new Set(["json", "force", "next", "prev", "open", "top", "clear-note", "clear-parent", "approve", "block"]);
+const BOOL_FLAGS = new Set(["json", "force", "next", "prev", "open", "top", "clear-note", "clear-parent", "approve", "block", "auto-review"]);
 const MULTI_FLAGS = new Set(["finding"]); // repeatable: each occurrence appends one value
 
 function parse(argv: string[]): Parsed {
@@ -126,7 +127,11 @@ async function main(): Promise<number> {
     if (flags.open) setTimeout(() => Bun.spawn(["open", `http://127.0.0.1:${port}`]), 800);
     const proc = Bun.spawn({
       cmd: [process.execPath, join(import.meta.dir, "index.ts")],
-      env: { ...process.env, PORT: String(port) },
+      env: {
+        ...process.env,
+        PORT: String(port),
+        ...(flags["auto-review"] ? { KANBAN_AUTO_REVIEW: "1" } : {}),
+      },
       stdio: ["inherit", "inherit", "inherit"],
     });
     await proc.exited;
