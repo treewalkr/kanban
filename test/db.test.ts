@@ -190,6 +190,83 @@ test("deleteTask guards descendants and force cascades the subtree", () => {
   expect(db.tasks()).toHaveLength(0);
 });
 
+test("attach versions per card and kind; latestPlan returns the newest", () => {
+  const a = db.createTask({ title: "a" });
+  const v1 = db.attach(a.id, "plan", "first draft", "/tmp/p1.md");
+  const v2 = db.attach(a.id, "plan", "second draft", "/tmp/p2.md");
+  expect(v1.version).toBe(1);
+  expect(v2.version).toBe(2);
+  expect(db.latestPlan(a.id)!.content).toBe("second draft");
+  expect(db.latestPlan(a.id)!.source).toBe("/tmp/p2.md");
+  // versions are per kind: another kind starts over
+  expect(db.attach(a.id, "brief", "x").version).toBe(1);
+  expect(db.latestPlan(a.id)!.version).toBe(2);
+});
+
+test("attach rejects unknown tasks and empty content", () => {
+  expect(() => db.attach("zzzzz", "plan", "x")).toThrow(/no task/);
+  const a = db.createTask({ title: "a" });
+  expect(() => db.attach(a.id, "plan", "  ")).toThrow(/empty/);
+  expect(db.latestPlan(a.id)).toBeNull();
+});
+
+test("latestPlans keys the newest plan per card for the board payload", () => {
+  const a = db.createTask({ title: "a" });
+  const b = db.createTask({ title: "b" });
+  db.attach(a.id, "plan", "v1");
+  db.attach(a.id, "plan", "v2");
+  db.attach(b.id, "plan", "only");
+  const plans = db.latestPlans();
+  expect(Object.keys(plans).sort()).toEqual([a.id, b.id].sort());
+  expect(plans[a.id]!.content).toBe("v2");
+  expect(plans[b.id]!.content).toBe("only");
+  expect(db.board().plans[a.id]!.content).toBe("v2");
+});
+
+test("deleting a task (or its lane) removes its attachments", () => {
+  const a = db.createTask({ title: "a", lane: "plan" });
+  const b = db.createTask({ title: "b" });
+  db.attach(a.id, "plan", "x");
+  db.attach(b.id, "plan", "y");
+  db.deleteTask(b.id);
+  expect(db.latestPlans()[b.id]).toBeUndefined();
+  db.deleteLane("plan", true);
+  expect(db.latestPlans()[a.id]).toBeUndefined();
+});
+
+test("migrates the prototype plans table into attachments and drops it", () => {
+  const path = join(dir, "proto.db");
+  new KanbanDb(path).close();
+  const raw = new Database(path); // simulate a db carrying the hand-made prototype table
+  raw.run(
+    "INSERT INTO tasks (id, title, note, lane_id, project, position, created_at, updated_at) VALUES ('abc12', 'proto', '', 'backlog', '', 100, 0, 0)",
+  );
+  raw.exec(`
+    CREATE TABLE plans (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL REFERENCES tasks (id),
+      version INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL
+    );
+  `);
+  raw.run(
+    "INSERT INTO plans (id, task_id, version, content, source, created_at) VALUES (?, ?, 1, ?, ?, ?)",
+    ["8taas", "abc12", "prototype plan", "/tmp/plan.md", Date.now()],
+  );
+  raw.close();
+  const reopened = new KanbanDb(path);
+  const plan = reopened.latestPlan("abc12");
+  expect(plan?.content).toBe("prototype plan");
+  expect(plan?.version).toBe(1);
+  expect(plan?.source).toBe("/tmp/plan.md");
+  reopened.close();
+  const check = new Database(path);
+  expect(check.query("SELECT name FROM sqlite_master WHERE type='table' AND name='plans'").all()).toEqual([]);
+  check.close();
+});
+
 test("deleteLane force removes descendants living in other lanes", () => {
   const story = db.createTask({ title: "story", lane: "plan" });
   db.createTask({ title: "sub", parent: story.id, lane: "done" });

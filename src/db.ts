@@ -23,9 +23,20 @@ export interface Task {
   updatedAt: number;
 }
 
+export interface Attachment {
+  id: string;
+  taskId: string;
+  kind: string; // "plan" today; the table is generic for future artifact kinds
+  version: number;
+  content: string;
+  source: string; // path the content was read from, informational only
+  createdAt: number;
+}
+
 export interface Board {
   lanes: Lane[];
   tasks: Task[];
+  plans: Record<string, Attachment>;
 }
 
 export interface TaskPatch {
@@ -78,6 +89,16 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 CREATE INDEX IF NOT EXISTS tasks_lane_order ON tasks (lane_id, position);
 CREATE INDEX IF NOT EXISTS tasks_parent ON tasks (parent_id);
+CREATE TABLE IF NOT EXISTS attachments (
+  id TEXT PRIMARY KEY,
+  card_id TEXT NOT NULL REFERENCES tasks (id),
+  kind TEXT NOT NULL DEFAULT 'plan',
+  version INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS attachments_card_kind_version ON attachments (card_id, kind, version);
 `;
 
 export const DEFAULT_LANES: Array<Omit<Lane, "position">> = [
@@ -113,6 +134,16 @@ interface TaskRow {
   updated_at: number;
 }
 
+interface AttachmentRow {
+  id: string;
+  card_id: string;
+  kind: string;
+  version: number;
+  content: string;
+  source: string;
+  created_at: number;
+}
+
 const rowToLane = (r: LaneRow): Lane => ({ ...r });
 const rowToTask = (r: TaskRow): Task => ({
   id: r.id,
@@ -124,6 +155,16 @@ const rowToTask = (r: TaskRow): Task => ({
   position: r.position,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
+});
+
+const rowToAttachment = (r: AttachmentRow): Attachment => ({
+  id: r.id,
+  taskId: r.card_id,
+  kind: r.kind,
+  version: r.version,
+  content: r.content,
+  source: r.source,
+  createdAt: r.created_at,
 });
 
 export class KanbanDb {
@@ -138,6 +179,7 @@ export class KanbanDb {
     this.db.exec(SCHEMA);
     this.seedLanes();
     this.ensureArchiveLane();
+    this.migratePlansTable();
   }
 
   close(): void {
@@ -204,6 +246,20 @@ export class KanbanDb {
     );
   }
 
+  // one dev database carried a hand-made `plans` prototype table; fold its rows
+  // into attachments (keeping ids and versions) and drop it
+  private migratePlansTable(): void {
+    const table = this.q("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'plans'").get() as
+      | { name: string }
+      | null;
+    if (!table) return;
+    this.q(
+      `INSERT OR IGNORE INTO attachments (id, card_id, kind, version, content, source, created_at)
+       SELECT id, task_id, 'plan', version, content, source, created_at FROM plans`,
+    ).run();
+    this.db.exec("DROP TABLE plans");
+  }
+
   // ---------- reads ----------
 
   lanes(): Lane[] {
@@ -219,7 +275,7 @@ export class KanbanDb {
     const tasks = this.tasks().sort(
       (a, b) => (laneOrder.get(a.laneId) ?? 0) - (laneOrder.get(b.laneId) ?? 0) || a.position - b.position,
     );
-    return { lanes: this.lanes(), tasks };
+    return { lanes: this.lanes(), tasks, plans: this.latestPlans() };
   }
 
   laneTasks(laneId: string): Task[] {
@@ -339,8 +395,11 @@ export class KanbanDb {
       throw new KanbanError(`task '${task.id}' has ${ids.length} descendant(s); pass force to delete them too`, "conflict");
     }
     const del = this.q("DELETE FROM tasks WHERE id = ?");
-    del.run(task.id);
-    ids.forEach((id) => del.run(id));
+    const delAttachments = this.q("DELETE FROM attachments WHERE card_id = ?");
+    for (const id of [task.id, ...ids]) {
+      del.run(id);
+      delAttachments.run(id);
+    }
     return task;
   }
 
@@ -397,6 +456,55 @@ export class KanbanDb {
       }
     }
     return out;
+  }
+
+  // ---------- attachments ----------
+
+  /** Attach `content` as the next version of `kind` on a card; returns the stored row. */
+  attach(taskRef: string, kind: string, content: string, source = ""): Attachment {
+    const task = this.resolveTask(taskRef);
+    if (!content.trim()) throw new KanbanError("attachment content must not be empty", "invalid");
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const version =
+        (
+          this.q("SELECT MAX(version) AS v FROM attachments WHERE card_id = ? AND kind = ?").get(task.id, kind) as {
+            v: number | null;
+          }
+        ).v ?? 0;
+      try {
+        this.q(
+          "INSERT INTO attachments (id, card_id, kind, version, content, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ).run(newId(), task.id, kind, version + 1, content, source, Date.now());
+        return this.attachment(task.id, kind)!;
+      } catch (err) {
+        // two connections can pick the same (card, kind, version); recompute with a fresh id
+        if (!(err instanceof Error && err.message.includes("UNIQUE"))) throw err;
+      }
+    }
+    throw new KanbanError("could not attach without a version collision", "conflict");
+  }
+
+  /** Latest attachment of `kind` on a card, or null. */
+  attachment(taskId: string, kind: string): Attachment | null {
+    const row = this.q(
+      "SELECT * FROM attachments WHERE card_id = ? AND kind = ? ORDER BY version DESC LIMIT 1",
+    ).get(taskId, kind) as AttachmentRow | null;
+    return row ? rowToAttachment(row) : null;
+  }
+
+  latestPlan(taskRef: string): Attachment | null {
+    return this.attachment(this.resolveTask(taskRef).id, "plan");
+  }
+
+  /** Latest plan per card, keyed by task id — the shape the board payload ships. */
+  latestPlans(): Record<string, Attachment> {
+    const rows = this.q(
+      `SELECT a.* FROM attachments a
+       JOIN (SELECT card_id, MAX(version) AS v FROM attachments WHERE kind = 'plan' GROUP BY card_id) m
+         ON a.card_id = m.card_id AND a.version = m.v
+       WHERE a.kind = 'plan'`,
+    ).all() as AttachmentRow[];
+    return Object.fromEntries(rows.map((r) => [r.card_id, rowToAttachment(r)]));
   }
 
   // ---------- lane writes ----------
@@ -462,8 +570,12 @@ export class KanbanDb {
       if (!force) throw new KanbanError(`lane '${lane.id}' still holds ${count} task(s); pass force to delete them too`, "conflict");
       // delete whole subtrees so no task elsewhere keeps a dangling parent
       const del = this.q("DELETE FROM tasks WHERE id = ?");
+      const delAttachments = this.q("DELETE FROM attachments WHERE card_id = ?");
       for (const t of this.laneTasks(lane.id)) {
-        [t.id, ...this.descendantIds(t.id)].forEach((id) => del.run(id));
+        for (const id of [t.id, ...this.descendantIds(t.id)]) {
+          del.run(id);
+          delAttachments.run(id);
+        }
       }
     }
     this.q("DELETE FROM lanes WHERE id = ?").run(lane.id);
