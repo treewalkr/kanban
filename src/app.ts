@@ -1,6 +1,6 @@
 import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
-import { KanbanDb, KanbanError, defaultDbPath, type Board, type Lane, type Task } from "./db";
+import { KanbanDb, KanbanError, defaultDbPath, type Attachment, type Board, type Lane, type Task } from "./db";
 
 const errorStatus = { "not-found": 404, conflict: 409, invalid: 400 } as const;
 
@@ -82,6 +82,36 @@ export const createApp = (db: KanbanDb) => {
     })
     .get("/health", () => ({ ok: true }))
     .get("/board", (): Board => db.board())
+    .post(
+      "/tasks/:id/plan",
+      ({ params, body, status }): Attachment | unknown => {
+        try {
+          return status(201, db.attach(params.id, "plan", body.content, body.source));
+        } catch (e) {
+          return fail(e, status);
+        }
+      },
+      {
+        params: t.Object({ id: t.String() }),
+        body: t.Object({
+          content: t.String({ minLength: 1 }),
+          source: t.Optional(t.String()),
+        }),
+      },
+    )
+    .get(
+      "/tasks/:id/plan",
+      ({ params, status }): Attachment | unknown => {
+        try {
+          const plan = db.latestPlan(params.id);
+          if (!plan) throw new KanbanError(`no plan on task '${params.id}'`, "not-found");
+          return plan;
+        } catch (e) {
+          return fail(e, status);
+        }
+      },
+      { params: t.Object({ id: t.String() }) },
+    )
     .post(
       "/tasks",
       ({ body, status }): Task | unknown => {

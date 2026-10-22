@@ -43,3 +43,46 @@ test("/events streams an initial sync, then a change on API mutations", async ()
 
   await reader.cancel(); // client disconnect unsubscribes without throwing
 });
+
+test("POST /tasks/:id/plan stores a version; GET returns the latest or 404", async () => {
+  const app = createApp(db);
+  const task = db.createTask({ title: "one" });
+
+  const missing = await app.handle(new Request(`http://localhost/tasks/${task.id}/plan`));
+  expect(missing.status).toBe(404);
+
+  const post = await app.handle(
+    new Request(`http://localhost/tasks/${task.id}/plan`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ content: "draft 1", source: "/tmp/p.md" }),
+    }),
+  );
+  expect(post.status).toBe(201);
+  expect(await post.json()).toMatchObject({ version: 1, content: "draft 1", source: "/tmp/p.md" });
+
+  await app.handle(
+    new Request(`http://localhost/tasks/${task.id}/plan`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ content: "draft 2" }),
+    }),
+  );
+  const got = await app.handle(new Request(`http://localhost/tasks/${task.id}/plan`));
+  expect(got.status).toBe(200);
+  expect(await got.json()).toMatchObject({ version: 2, content: "draft 2", source: "" });
+
+  const noTask = await app.handle(new Request("http://localhost/tasks/zzzzz/plan"));
+  expect(noTask.status).toBe(404);
+});
+
+test("/board carries the latest plan per card", async () => {
+  const app = createApp(db);
+  const task = db.createTask({ title: "one" });
+  db.attach(task.id, "plan", "v1");
+  db.attach(task.id, "plan", "v2");
+
+  const res = await app.handle(new Request("http://localhost/board"));
+  const board = (await res.json()) as { plans: Record<string, { content: string; version: number }> };
+  expect(board.plans[task.id]).toMatchObject({ content: "v2", version: 2 });
+});
