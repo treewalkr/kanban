@@ -45,6 +45,23 @@
     confirming = false;
     board.deleteTask(source.id, true); // the confirm dialog is the guard
   }
+
+  // move focus into the dialog so Tab doesn't cycle the board behind the overlay
+  function autofocus(node: HTMLElement) {
+    node.focus();
+  }
+
+  // size the note textarea to its content instead of a fixed 6-row keyhole;
+  // capped at half the viewport so the dialog still fits
+  function fitNote(node: HTMLTextAreaElement) {
+    const fit = () => {
+      node.style.height = "auto";
+      node.style.height = Math.min(node.scrollHeight, Math.floor(window.innerHeight / 2)) + "px";
+    };
+    fit();
+    node.addEventListener("input", fit);
+    return { destroy: () => node.removeEventListener("input", fit) };
+  }
 </script>
 
 <svelte:window
@@ -62,14 +79,21 @@
     if (e.target === e.currentTarget) board.closeCard();
   }}
 >
-  <div class="editor" role="dialog" aria-label="edit card">
+  <div
+    class="editor"
+    role="dialog"
+    aria-modal="true"
+    aria-label="edit card"
+    tabindex="-1"
+    use:autofocus
+  >
     <label>
       title
       <input bind:value={title} />
     </label>
     <label>
       note
-      <textarea bind:value={note} rows="6" placeholder="details, links, acceptance criteria… (markdown ok)"></textarea>
+      <textarea bind:value={note} use:fitNote rows="6" placeholder="details, links, acceptance criteria… (markdown ok)"></textarea>
     </label>
     <div class="row">
       <label>
