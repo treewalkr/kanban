@@ -6,7 +6,7 @@ import { KanbanDb } from "../src/db";
 import {
   BUILDER_AUTHOR,
   REVIEWER_AUTHOR,
-  reviewerExtraArgs,
+  agentFlags,
   reviewerPrompt,
   startAutoReview,
   type AgentJob,
@@ -14,6 +14,22 @@ import {
 } from "../src/autoreview";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Run with the agent env vars cleared, then set from `env`, restoring after. */
+function withAgentEnv(env: Record<string, string>, run: () => void): void {
+  const keys = ["KANBAN_AUTOREVIEW_MODEL", "KANBAN_AUTOREVIEW_THINKING"];
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  try {
+    for (const k of keys) delete process.env[k];
+    for (const [k, v] of Object.entries(env)) process.env[k] = v;
+    run();
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
 
 /** Records every spawn; the test resolves each one when its "agent" is done. */
 function fakeSpawn() {
@@ -251,22 +267,76 @@ describe("auto-review", () => {
     expect(prompt).toContain("--finding");
   });
 
-  test("reviewer pi flags: thinking max by default, env-overridable", () => {
-    const restore = { m: process.env.KANBAN_AUTOREVIEW_MODEL, t: process.env.KANBAN_AUTOREVIEW_THINKING };
-    try {
-      delete process.env.KANBAN_AUTOREVIEW_MODEL;
-      delete process.env.KANBAN_AUTOREVIEW_THINKING;
-      expect(reviewerExtraArgs()).toEqual(["--thinking", "max"]);
-      process.env.KANBAN_AUTOREVIEW_MODEL = "anthropic/claude-opus-4";
-      process.env.KANBAN_AUTOREVIEW_THINKING = "high";
-      expect(reviewerExtraArgs()).toEqual(["--model", "anthropic/claude-opus-4", "--thinking", "high"]);
-      process.env.KANBAN_AUTOREVIEW_THINKING = "";
-      expect(reviewerExtraArgs()).toEqual(["--model", "anthropic/claude-opus-4"]);
-    } finally {
-      for (const [k, v] of Object.entries({ KANBAN_AUTOREVIEW_MODEL: restore.m, KANBAN_AUTOREVIEW_THINKING: restore.t })) {
-        if (v === undefined) delete process.env[k];
-        else process.env[k] = v;
-      }
-    }
+  test("agentFlags: reviewer defaults to thinking max, builder to nothing", () => {
+    withAgentEnv({}, () => {
+      expect(agentFlags("reviewer", null)).toEqual(["--thinking", "max"]);
+      expect(agentFlags("builder", null)).toEqual([]);
+    });
+  });
+
+  test("agentFlags: board config maps onto pi flags", () => {
+    withAgentEnv({}, () => {
+      expect(
+        agentFlags("reviewer", {
+          provider: "anthropic",
+          model: "claude-opus-4-5",
+          thinking: "high",
+          skills: ["~/.pi/agent/skills/scrutinize"],
+          context: "we value perf",
+          tools: "-edit",
+          extraArgs: ["--no-mcp"],
+        }),
+      ).toEqual([
+        "--provider",
+        "anthropic",
+        "--model",
+        "claude-opus-4-5",
+        "--thinking",
+        "high",
+        "--skill",
+        "~/.pi/agent/skills/scrutinize",
+        "--append-system-prompt",
+        "we value perf",
+        "--tools",
+        "-edit",
+        "--no-mcp",
+      ]);
+    });
+  });
+
+  test("agentFlags: env beats config; empty thinking env disables it", () => {
+    withAgentEnv({ KANBAN_AUTOREVIEW_MODEL: "openai/o3", KANBAN_AUTOREVIEW_THINKING: "low" }, () => {
+      expect(agentFlags("reviewer", { model: "claude-x", thinking: "max" })).toEqual([
+        "--model",
+        "openai/o3",
+        "--thinking",
+        "low",
+      ]);
+    });
+    withAgentEnv({ KANBAN_AUTOREVIEW_MODEL: "openai/o3", KANBAN_AUTOREVIEW_THINKING: "" }, () => {
+      expect(agentFlags("reviewer", { thinking: "max" })).toEqual(["--model", "openai/o3"]);
+    });
+  });
+
+  test("spawn carries the board config: context, skills and timeout reach the session", async () => {
+    const { dbFile, writer: w } = setup();
+    cardInReview(w);
+    w.setAgentConfig("reviewer", {
+      model: "claude-opus-4-5",
+      skills: ["~/.pi/agent/skills/scrutinize"],
+      context: "we value perf over features",
+      timeoutMs: 300_000,
+    });
+    const seen: Array<{ flags: string[]; timeoutMs: number }> = [];
+    const spawnFn: SpawnFn = (job, ctx) => {
+      seen.push({ flags: agentFlags(job.role, ctx.config), timeoutMs: ctx.timeoutMs });
+      return Promise.resolve(1); // session "fails": no verdict, so the loop stops here
+    };
+    start(spawnFn, dbFile);
+    await sleep(20);
+    expect(seen[0]!.flags).toContain("--append-system-prompt");
+    expect(seen[0]!.flags).toContain("--skill");
+    expect(seen[0]!.flags).toContain("claude-opus-4-5");
+    expect(seen[0]!.timeoutMs).toBe(300_000);
   });
 });

@@ -1,4 +1,6 @@
-import { KanbanDb, type Task } from "./db";
+import { KanbanDb, type AgentConfig, type AgentRole, type Task } from "./db";
+
+export type { AgentRole };
 
 /**
  * Auto-review loop, hosted by the serve process (`KANBAN_AUTO_REVIEW=1`).
@@ -16,8 +18,6 @@ import { KanbanDb, type Task } from "./db";
 export const REVIEWER_AUTHOR = "pi-reviewer";
 export const BUILDER_AUTHOR = "pi-builder";
 
-export type AgentRole = "reviewer" | "builder";
-
 export interface AgentJob {
   task: Task;
   role: AgentRole;
@@ -27,6 +27,7 @@ export interface AgentJob {
 export interface SpawnContext {
   cwd: string;
   timeoutMs: number;
+  config: AgentConfig | null;
   log: (message: string) => void;
 }
 
@@ -73,26 +74,31 @@ export function builderPrompt(task: Task): string {
 Never move the card with mv. If a finding looks wrong, say so in the handoff message instead of silently skipping it.`;
 }
 
-/** Extra pi flags for reviewer sessions — max effort by default. */
-export function reviewerExtraArgs(): string[] {
+/**
+ * pi flags for a role: env (KANBAN_AUTOREVIEW_MODEL / KANBAN_AUTOREVIEW_THINKING)
+ * beats the board config, which beats the built-in default (reviewer thinks max;
+ * setting the thinking env var to "" disables thinking entirely).
+ */
+export function agentFlags(role: AgentRole, cfg: AgentConfig | null): string[] {
+  const envModel = process.env.KANBAN_AUTOREVIEW_MODEL?.trim();
+  const envThinking = process.env.KANBAN_AUTOREVIEW_THINKING;
+  let thinking = envThinking?.trim() || cfg?.thinking || (role === "reviewer" ? "max" : "");
+  if (envThinking === "") thinking = ""; // explicitly disabled via env
   const args: string[] = [];
-  const model = process.env.KANBAN_AUTOREVIEW_MODEL?.trim();
+  if (cfg?.provider) args.push("--provider", cfg.provider);
+  const model = envModel || cfg?.model;
   if (model) args.push("--model", model);
-  const thinking = (process.env.KANBAN_AUTOREVIEW_THINKING ?? "max").trim();
   if (thinking) args.push("--thinking", thinking);
+  for (const skill of cfg?.skills ?? []) args.push("--skill", skill);
+  if (cfg?.context) args.push("--append-system-prompt", cfg.context);
+  if (cfg?.tools) args.push("--tools", cfg.tools);
+  args.push(...(cfg?.extraArgs ?? []));
   return args;
 }
 
-const defaultSpawn: SpawnFn = (job, { cwd, timeoutMs, log }) => {
+const defaultSpawn: SpawnFn = (job, { cwd, timeoutMs, config, log }) => {
   const proc = Bun.spawn({
-    cmd: [
-      "pi",
-      "--print",
-      "--session-id",
-      `kanban-${job.task.id}`,
-      ...(job.role === "reviewer" ? reviewerExtraArgs() : []),
-      job.prompt,
-    ],
+    cmd: ["pi", "--print", "--session-id", `kanban-${job.task.id}`, ...agentFlags(job.role, config), job.prompt],
     cwd,
     stdin: "ignore",
     stdout: "pipe",
@@ -177,10 +183,15 @@ export function startAutoReview(opts: AutoReviewOptions): { stop(): void } {
         const fresh = db.tasks().find((t) => t.id === job.task.id);
         if (!fresh || roleFor(fresh) !== job.role) continue; // state moved on while queued
         inFlight.add(job.task.id);
-        log(`${job.role} start ${job.task.id} "${job.task.title}"`);
+        const config = db.agentConfig(job.role); // fresh per spawn: web edits apply to the next session
+        const flags = agentFlags(job.role, config);
+        const model = flags.includes("--model") ? flags[flags.indexOf("--model") + 1] : "default model";
+        const thinking = flags.includes("--thinking") ? `thinking ${flags[flags.indexOf("--thinking") + 1]}` : "";
+        const skills = config?.skills?.length ? `${config.skills.length} skill${config.skills.length === 1 ? "" : "s"}` : "";
+        log(`${job.role} start ${job.task.id} "${job.task.title}" (${[model, thinking, skills].filter(Boolean).join(" · ")})`);
         let code = 0;
         try {
-          code = await spawnFn(job, { cwd: opts.cwd, timeoutMs, log });
+          code = await spawnFn(job, { cwd: opts.cwd, timeoutMs: config?.timeoutMs ?? timeoutMs, config, log });
         } catch (err) {
           log(`${job.role} ${job.task.id}: spawn error ${(err as Error).message}`);
           code = 1;
