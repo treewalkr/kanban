@@ -1,6 +1,6 @@
-import type { Task } from "./db";
+import type { Attachment, Task } from "./db";
 
-export type SearchResultKind = "title" | "checklist" | "note";
+export type SearchResultKind = "title" | "checklist" | "note" | "plan";
 
 export interface SearchResult {
   kind: SearchResultKind;
@@ -42,8 +42,12 @@ function snippet(line: string, at: number): string {
   return `${start > 0 ? "…" : ""}${body}${start + SNIPPET_MAX < line.length ? "…" : ""}`;
 }
 
-/** One result per match, best first: title/id > checklist line > note body. */
-export function searchBoard(tasks: Task[], query: string): SearchResult[] {
+/** One result per match, best first: title/id > checklist line > note body > plan body. */
+export function searchBoard(
+  tasks: Task[],
+  query: string,
+  plans: Record<string, Attachment> = {},
+): SearchResult[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
   const results: SearchResult[] = [];
@@ -80,6 +84,18 @@ export function searchBoard(tasks: Task[], query: string): SearchResult[] {
       if (at >= 0) {
         results.push({ kind: "note", task, text: snippet(t, at), score: 40 });
         break; // one note row per card, the first matching line
+      }
+    }
+    const plan = plans[task.id];
+    if (plan) {
+      for (const line of plan.content.split("\n")) {
+        const t = line.trim();
+        if (!t) continue;
+        const at = t.toLowerCase().indexOf(q);
+        if (at >= 0) {
+          results.push({ kind: "plan", task, text: snippet(t, at), score: 35 });
+          break; // one plan row per card, the first matching line
+        }
       }
     }
   }

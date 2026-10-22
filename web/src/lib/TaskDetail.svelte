@@ -9,6 +9,7 @@
 
   // live copy: refresh replaces board.tasks, so derive everything hierarchy-ish from it
   let me = $derived(board.taskById(task.id) ?? task);
+  let plan = $derived(board.plans[task.id]);
   let ancestors = $derived(board.ancestorsOf(task.id));
   let progress = $derived(board.progressOf(me));
 
@@ -96,6 +97,17 @@
         <div class="detail-note md">{@html renderMarkdown(me.note)}</div>
       {:else}
         <p class="detail-note empty">no note</p>
+      {/if}
+      {#if plan}
+        <details class="detail-plan">
+          <summary>
+            plan
+            <span class="plan-meta" title="{plan.source}">
+              v{plan.version} · {timeAgo(plan.createdAt)}{#if plan.source} · {plan.source}{/if}
+            </span>
+          </summary>
+          <div class="detail-note md">{@html renderMarkdown(plan.content)}</div>
+        </details>
       {/if}
       {#if childRows.length > 0}
         <div class="detail-children">

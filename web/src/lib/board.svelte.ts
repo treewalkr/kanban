@@ -1,5 +1,5 @@
 import { api } from "../api";
-import type { Lane, LanePatch, Task, TaskPatch } from "../../../src/db";
+import type { Attachment, Lane, LanePatch, Task, TaskPatch } from "../../../src/db";
 import { searchBoard } from "../../../src/search";
 
 type EdenError = { value?: unknown };
@@ -7,6 +7,8 @@ type EdenError = { value?: unknown };
 class BoardStore {
   lanes = $state<Lane[]>([]);
   tasks = $state<Task[]>([]);
+  /** Latest plan per card, keyed by task id (board payload). */
+  plans = $state<Record<string, Attachment>>({});
   loading = $state(true);
   error = $state("");
   search = $state("");
@@ -31,7 +33,7 @@ class BoardStore {
     this.search.trim() !== "" && this.visibleTasks("archive").length > 0,
   );
 
-  readonly searchResults = $derived(searchBoard(this.tasks, this.search));
+  readonly searchResults = $derived(searchBoard(this.tasks, this.search, this.plans));
 
   openCard(task: Task): void {
     this.editing = task;
@@ -150,6 +152,7 @@ class BoardStore {
     this.error = "";
     this.lanes = data.lanes;
     this.tasks = data.tasks;
+    this.plans = data.plans;
     this.loading = false;
   }
 

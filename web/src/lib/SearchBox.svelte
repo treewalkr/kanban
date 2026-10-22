@@ -25,6 +25,7 @@
   function glyph(r: SearchResult): string {
     if (r.kind === "checklist") return r.checked ? "☑" : "☐";
     if (r.kind === "note") return "≡";
+    if (r.kind === "plan") return "✎";
     return "▪";
   }
 

@@ -153,6 +153,7 @@ async function main(): Promise<number> {
         const results = searchBoard(
           db.tasks().filter((t) => (project ? t.project === project : true)),
           query,
+          db.latestPlans(),
         );
         if (json) jsonOut(results);
         else console.log(searchResults(db, query, results));

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Task } from "../src/db";
+import type { Attachment, Task } from "../src/db";
 import { checklistLines, searchBoard } from "../src/search";
 
 function task(partial: Partial<Task> & { id: string; title: string }): Task {
@@ -13,6 +13,10 @@ function task(partial: Partial<Task> & { id: string; title: string }): Task {
     updatedAt: 1,
     ...partial,
   };
+}
+
+function plan(taskId: string, content: string): Attachment {
+  return { id: "p1", taskId, kind: "plan", version: 1, content, source: "/tmp/p.md", createdAt: 1 };
 }
 
 test("parses checked and unchecked checklist lines, ignoring plain bullets", () => {
@@ -94,4 +98,28 @@ test("caps results and orders by score, ties keeping board order", () => {
   const results = searchBoard(tasks, "sweep");
   expect(results).toHaveLength(20);
   expect(results[0]!.task.id).toBe("t0"); // equal scores fall back to array order
+});
+
+test("matches plan text below note matches; title matches suppress the plan row", () => {
+  const tasks = [
+    task({ id: "p1", title: "migrate db", note: "see the runbook" }),
+    task({ id: "p2", title: "ops doc", note: "" }),
+    task({ id: "p3", title: "runbook", note: "" }),
+  ];
+  const plans = {
+    p1: plan("p1", "# migration plan\n1. dump the runbook data"),
+    p2: plan("p2", "runbook rewrite plan"),
+    p3: plan("p3", "runbook v2 — title already matched"),
+  };
+  const results = searchBoard(tasks, "runbook", plans);
+  // p1: note matches (40) and plan matches (35) → two rows, note first;
+  // p2: plan only; p3: title matched, so no plan row — the card shows up once
+  expect(results.filter((r) => r.task.id === "p1").map((r) => r.kind)).toEqual(["note", "plan"]);
+  const p2Rows = results.filter((r) => r.task.id === "p2");
+  expect(p2Rows).toHaveLength(1);
+  expect(p2Rows[0]!.kind).toBe("plan");
+  expect(results.filter((r) => r.task.id === "p3").map((r) => r.kind)).toEqual(["title"]);
+
+  // without plans passed (legacy call sites) the note and title rows still surface
+  expect(searchBoard(tasks, "runbook")).toHaveLength(2);
 });
