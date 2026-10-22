@@ -122,6 +122,7 @@ button {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh; /* mobile browsers: visible area, not the URL-bar-inflated one */
 }
 
 .top {
@@ -132,6 +133,34 @@ button {
   padding: 0 12px 0 14px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel);
+}
+
+/* narrow viewports: brand + count + theme on row 1, chips and search take
+   their own full rows — nothing gets crushed or pushed off-screen */
+@media (max-width: 640px) {
+  .top {
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    row-gap: 8px;
+  }
+
+  .meta {
+    margin-left: auto;
+  }
+
+  .chips {
+    order: 1;
+    flex: 1 1 100%;
+  }
+
+  .search-box {
+    order: 2;
+    flex: 1 1 100%;
+  }
+
+  .search {
+    width: 100%;
+  }
 }
 
 .brand {
@@ -481,6 +510,13 @@ button:focus-visible {
   100% {
     border-color: var(--border);
     box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card.flash {
+    animation: none;
+    border-color: var(--accent);
   }
 }
 
