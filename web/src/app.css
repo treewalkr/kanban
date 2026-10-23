@@ -1001,34 +1001,6 @@ button.id-copy {
   gap: 12px;
 }
 
-.agent-tabs {
-  display: flex;
-  gap: 4px;
-}
-
-.agent-tabs button {
-  height: 26px;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-small);
-  background: var(--bg);
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.agent-tabs button:hover {
-  background: var(--bg-hover);
-}
-
-.agent-tabs button.active {
-  border-color: var(--accent);
-  background: var(--bg-selected);
-  color: var(--text);
-}
-
 /* ---------- settings dialog (ported from pi-web, MIT © agegr/pi-web) ---------- */
 
 .sr-only {
@@ -1262,7 +1234,8 @@ button.id-copy {
   font-weight: 400;
 }
 
-.seg-option:has(input:checked) {
+.seg-option:has(input:checked),
+.seg-option.on {
   background: var(--bg-selected);
   color: var(--accent);
   font-weight: 600;
