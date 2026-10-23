@@ -66,26 +66,13 @@
     saving = false;
     if (ok) agents.open = false;
   }
-
-  function autofocus(node: HTMLElement) {
-    node.focus();
-  }
 </script>
 
-<svelte:window onkeydown={(e) => { if (e.key === "Escape") agents.open = false; }} />
-
-<div
-  class="overlay"
-  role="presentation"
-  onclick={(e) => {
-    if (e.target === e.currentTarget) agents.open = false;
-  }}
->
-  <div class="editor" role="dialog" aria-modal="true" aria-label="agent settings" tabindex="-1" use:autofocus>
-    <div class="agent-tabs">
-      <button class:active={role === "reviewer"} onclick={() => switchRole("reviewer")}>reviewer</button>
-      <button class:active={role === "builder"} onclick={() => switchRole("builder")}>builder</button>
-    </div>
+<div class="settings-general settings-form">
+  <div class="agent-tabs">
+    <button class:active={role === "reviewer"} onclick={() => switchRole("reviewer")}>reviewer</button>
+    <button class:active={role === "builder"} onclick={() => switchRole("builder")}>builder</button>
+  </div>
     {#if agents.models.length > 0}
       <div class="row">
         <label>
@@ -180,5 +167,4 @@
       <button class="ghost" onclick={() => (agents.open = false)}>cancel</button>
       <button class="primary" onclick={save} disabled={saving}>save</button>
     </div>
-  </div>
 </div>

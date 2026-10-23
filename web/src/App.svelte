@@ -7,15 +7,8 @@
   import TaskEditor from "./lib/TaskEditor.svelte";
   import AddLane from "./lib/AddLane.svelte";
   import SearchBox from "./lib/SearchBox.svelte";
-  import AgentsPanel from "./lib/AgentsPanel.svelte";
-
-  let theme = $state(document.documentElement.dataset.theme === "light" ? "light" : "dark");
-
-  function toggleTheme() {
-    theme = theme === "dark" ? "light" : "dark";
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem("kanban-theme", theme);
-  }
+  import SettingsPanel from "./lib/SettingsPanel.svelte";
+  import { theme, setTheme } from "./lib/theme.svelte";
 
   // initial load, plus catch-up when a modal closes (change events are paused while editing)
   $effect(() => {
@@ -86,21 +79,19 @@
     <div class="meta">{board.activeCount} tasks</div>
     <button
       class="theme-toggle"
-      onclick={() => {
-        if (agents.open) {
-          agents.open = false;
-        } else {
-          void agents.load();
-          agents.open = true;
-        }
-      }}
-      aria-label="agent settings"
-      title="agent settings"
+      onclick={() => (agents.open = !agents.open)}
+      aria-label="settings"
+      title="settings"
     >
       ⚙
     </button>
-    <button class="theme-toggle" onclick={toggleTheme} aria-label="toggle theme" title="toggle theme">
-      {theme === "dark" ? "☀" : "☾"}
+    <button
+      class="theme-toggle"
+      onclick={() => setTheme(theme.name === "dark" ? "light" : "dark")}
+      aria-label="toggle theme"
+      title="toggle theme"
+    >
+      {theme.name === "dark" ? "☀" : "☾"}
     </button>
   </header>
 
@@ -127,7 +118,7 @@
   {/if}
 
   {#if agents.open}
-    <AgentsPanel />
+    <SettingsPanel />
   {/if}
 
   {#if board.error}
